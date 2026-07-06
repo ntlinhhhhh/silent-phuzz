@@ -2,6 +2,7 @@
 mkdir -p /shared-tmpfs/{coverage-reports,exception-reports,error-reports,mysql-error-reports,shell-error-reports,unserialize-error-reports,pathtraversal-error-reports,xxe-error-reports}
 rsync -av /applications/$APPLICATION_TYPE/ /var/www/html/
 chown -R www-data:www-data /var/www/ /shared-tmpfs/{coverage-reports,exception-reports,error-reports,mysql-error-reports,shell-error-reports,unserialize-error-reports,pathtraversal-error-reports,xxe-error-reports}
+chmod -R 777 /shared-tmpfs
 
 if [ 0 -lt ${REQUIRES_DB} ]; then
 	while ! mysqladmin ping -h"db" --silent; do

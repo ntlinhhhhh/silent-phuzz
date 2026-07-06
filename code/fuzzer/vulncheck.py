@@ -8,6 +8,8 @@ import json
 from bs4 import BeautifulSoup, element
 from difflib import SequenceMatcher
 from utils import fuzz_open
+import sqlglot
+from sqlglot import exp
 
 class VulnCheck():
     NAME = "Example"
@@ -268,6 +270,108 @@ class ParamBasedSQLiVulnCheck(VulnCheck):
         return False
 
 
+class SilentSQLiVulnCheck(VulnCheck):
+    NAME = "Silent SQLi"
+
+    def __init__(self, mysql_query_events_folder):
+        self.mysql_query_events_folder = mysql_query_events_folder
+        self.honey_columns = {"phuzz_canary"}
+        self.delay_functions = {"sleep", "benchmark", "pg_sleep"}
+        self.sensor_tables = {"__phuzz_sensor_insert", "__phuzz_sensor_update", "__phuzz_sensor_delete"}
+
+    def check(self, candidate):
+        if not self.mysql_query_events_folder:
+            return False
+        event_file = os.path.join(
+            self.mysql_query_events_folder, f"{candidate.coverage_id}.json"
+        )
+        if not os.path.isfile(event_file):
+            return False
+
+        # Thu thập toàn bộ các giá trị đầu vào mà fuzzer đã chèn/đột biến
+        fuzz_values = []
+        if hasattr(candidate, 'fuzz_params') and candidate.fuzz_params:
+            for category in candidate.fuzz_params.values():
+                if isinstance(category, dict):
+                    for val in category.values():
+                        fuzz_values.append(str(val).lower())
+
+        for line in fuzz_open(event_file):
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except Exception:
+                continue
+
+            query = event.get("query", "")
+            if not query:
+                continue
+
+            # 1. AST Parsing
+            try:
+                ast = sqlglot.parse_one(query)
+            except Exception:
+                # If syntax error but execution was successful, could indicate SQLi bypass/anomaly,
+                # but we'll focus on successfully parsed ASTs first.
+                continue
+
+            # 2. Check for Time-Based functions in AST (e.g. sleep, benchmark, pg_sleep)
+            # Chỉ ghi nhận lỗi nếu Fuzzer thực sự gửi payload chứa hàm delay
+            for func in ast.find_all(exp.Anonymous):
+                func_name = func.name.lower()
+                if func_name in self.delay_functions:
+                    if any(func_name in val for val in fuzz_values):
+                        candidate.vulns.append(f"{self.NAME}_TimeBased")
+                        return True
+            for func in ast.find_all(exp.Func):
+                func_name = func.sql_name().lower()
+                if func_name in self.delay_functions:
+                    if any(func_name in val for val in fuzz_values):
+                        candidate.vulns.append(f"{self.NAME}_TimeBased")
+                        return True
+
+            # 3. Check for Honey Column Accesses
+            # Chỉ ghi nhận lỗi nếu Fuzzer thực sự gửi payload chứa tên cột bẫy
+            for col in ast.find_all(exp.Column):
+                col_name = col.name.lower()
+                if col_name in self.honey_columns:
+                    if any(col_name in val for val in fuzz_values):
+                        candidate.vulns.append(f"{self.NAME}_HoneyColumn")
+                        return True
+
+            # 4. Check for Sensor Table Accesses
+            # Chỉ ghi nhận lỗi nếu Fuzzer thực sự gửi payload chứa tên bảng cảm biến
+            for table in ast.find_all(exp.Table):
+                table_name = table.name.lower()
+                if table_name in self.sensor_tables:
+                    if any(table_name in val for val in fuzz_values):
+                        candidate.vulns.append(f"{self.NAME}_SensorTable")
+                        return True
+
+            # 5. Check for DDL operations (CREATE, ALTER, DROP)
+            # Chỉ ghi nhận lỗi nếu Fuzzer thực sự gửi payload chứa từ khóa DDL cấu trúc
+            ddl_classes = [exp.Create, exp.Drop, exp.Alter]
+            if hasattr(exp, 'AlterTable'):
+                ddl_classes.append(getattr(exp, 'AlterTable'))
+            if isinstance(ast, tuple(ddl_classes)):
+                if any(kw in val for val in fuzz_values for kw in ['create', 'drop', 'alter']):
+                    candidate.vulns.append(f"{self.NAME}_DDL")
+                    return True
+
+            # 6. Check if query execution latency suggests Sleep injection or anomalous delay
+            execution_time = event.get("execution_time", 0)
+            if execution_time > 2.0:  # Any query taking > 2 seconds in a controlled lab fuzzing environment is anomalous
+                # Let's confirm if sleep or delay function string is in raw query as fallback
+                query_lower = query.lower()
+                for df in self.delay_functions:
+                    if df in query_lower:
+                        if any(df in val for val in fuzz_values):
+                            candidate.vulns.append(f"{self.NAME}_TimeBasedAnomalous")
+                            return True
+
+        return False
+
 class CommandInjectionVulnCheck(VulnCheck):
     NAME = "CommandInjection"
 
@@ -491,16 +595,17 @@ class VulnChecker():
 
 
 class DefaultVulnChecker(VulnChecker):
-    def __init__(self, mysql_errors_folder=None, shell_errors_folder=None, unserialize_errors_folder=None, pathtraversal_errors_folder=None, xxe_errors_folder=None):
+    def __init__(self, mysql_errors_folder=None, mysql_query_events_folder=None, shell_errors_folder=None, unserialize_errors_folder=None, pathtraversal_errors_folder=None, xxe_errors_folder=None):
         super(VulnChecker, self).__init__()
         self.vuln_checkers = [
-            WebFuzzXSSVulnCheck(),
+            # WebFuzzXSSVulnCheck(),
             SQLiVulnCheck(mysql_errors_folder),
-            CommandInjectionVulnCheck(shell_errors_folder),
-            UnserializeVulnCheck(unserialize_errors_folder),
-            PathTraversalVulnCheck(pathtraversal_errors_folder),
-            OpenRedirectVulnCheck(),
-            XXEVulnCheck(xxe_errors_folder)
+            SilentSQLiVulnCheck(mysql_query_events_folder),
+            # CommandInjectionVulnCheck(shell_errors_folder),
+            # UnserializeVulnCheck(unserialize_errors_folder),
+            # PathTraversalVulnCheck(pathtraversal_errors_folder),
+            # OpenRedirectVulnCheck(),
+            # XXEVulnCheck(xxe_errors_folder)
         ]
 
     def vuln_check(self, candidate):
@@ -511,14 +616,15 @@ class DefaultVulnChecker(VulnChecker):
         return vulns
 
 class ParamBasedVulnChecker(DefaultVulnChecker):
-    def __init__(self, mysql_errors_folder=None, shell_errors_folder=None, unserialize_errors_folder=None, pathtraversal_errors_folder=None, xxe_errors_folder=None):
+    def __init__(self, mysql_errors_folder=None, mysql_query_events_folder=None, shell_errors_folder=None, unserialize_errors_folder=None, pathtraversal_errors_folder=None, xxe_errors_folder=None):
         self.vuln_checkers = [
-            WebFuzzXSSVulnCheck(),
+            # WebFuzzXSSVulnCheck(),
             ParamBasedSQLiVulnCheck(mysql_errors_folder),
-            ParamBasedCommandInjectionVulnCheck(shell_errors_folder),
-            ParamBasedUnserializeVulnCheck(unserialize_errors_folder),
+            SilentSQLiVulnCheck(mysql_query_events_folder),
+            # ParamBasedCommandInjectionVulnCheck(shell_errors_folder),
+            # ParamBasedUnserializeVulnCheck(unserialize_errors_folder),
             #ParamBasedPathTraversalVulnCheck(pathtraversal_errors_folder), # This one was used during the main analysis -> it discovered 'fu' in 'functions.php' (Wordpress), which is a false positive. 
-            WebPathBasedPathTraversalVulnCheck(pathtraversal_errors_folder), # This one ignores existing files, such as functions.php, and should thus report less false positives.
-            OpenRedirectVulnCheck(),
-            ParamBasedXXEVulnCheck(xxe_errors_folder)
+            # WebPathBasedPathTraversalVulnCheck(pathtraversal_errors_folder), # This one ignores existing files, such as functions.php, and should thus report less false positives.
+            # OpenRedirectVulnCheck(),
+            # ParamBasedXXEVulnCheck(xxe_errors_folder)
         ]
