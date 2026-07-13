@@ -51,7 +51,11 @@ class Candidate:
         self.is_initial_candidate = is_initial_candidate
         self.mutated_param_type=mutated_param_type
         self.mutated_param_name=mutated_param_name
-        
+        # Source Attribution cho Second-Order vulnerabilities
+        self.source_coverage_id = None   # Coverage ID của request Source
+        self.sink_coverage_ids = None     # Dict map: {sink_url: sink_coverage_id}
+        self.source_attribution = None   # Dict chứa thông tin truy vết nguồn gốc
+
         self.hash = None
 
     def __dict__(self):
@@ -84,7 +88,10 @@ class Candidate:
             'fuzzer_id': self.fuzzer_id,
             'is_initial_candidate': self.is_initial_candidate,
             'mutated_param_type': self.mutated_param_type,
-            'mutated_param_name': self.mutated_param_name
+            'mutated_param_name': self.mutated_param_name,
+            'source_coverage_id': self.source_coverage_id,
+            'sink_coverage_ids': self.sink_coverage_ids,
+            'source_attribution': self.source_attribution
         }
 
     def __str__(self):

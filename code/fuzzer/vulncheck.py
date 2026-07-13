@@ -11,6 +11,8 @@ from utils import fuzz_open
 import sqlglot
 from sqlglot import exp
 
+
+
 class VulnCheck():
     NAME = "Example"
 
@@ -275,9 +277,9 @@ class SilentSQLiVulnCheck(VulnCheck):
 
     def __init__(self, mysql_query_events_folder):
         self.mysql_query_events_folder = mysql_query_events_folder
-        self.honey_columns = {"phuzz_canary"}
+        self.honey_columns = {"phuzz_canary", "canary"}
         self.delay_functions = {"sleep", "benchmark", "pg_sleep"}
-        self.sensor_tables = {"__phuzz_sensor_insert", "__phuzz_sensor_update", "__phuzz_sensor_delete"}
+        self.sensor_tables = {"__phuzz_sensor_insert", "__phuzz_sensor_update", "__phuzz_sensor_delete", "phuzz_sensor"}
 
     def check(self, candidate):
         if not self.mysql_query_events_folder:
@@ -615,16 +617,158 @@ class DefaultVulnChecker(VulnChecker):
                 vulns.append(vuln_check.NAME)
         return vulns
 
+class SecondOrderSQLiVulnCheck(VulnCheck):
+    NAME = "Second-Order SQLi"
+
+    def __init__(self, db_write_events_folder, mysql_errors_folder, 
+                 mysql_query_events_folder):
+        self.db_write_events_folder = db_write_events_folder
+        self.mysql_errors_folder = mysql_errors_folder
+        self.mysql_query_events_folder = mysql_query_events_folder
+
+    def check(self, candidate):
+        # 1. Quet tat ca cac file log loi co trong thu muc de tim file dang fuzz_*.json
+        import glob
+        error_files = glob.glob(os.path.join(self.mysql_errors_folder, "fuzz_*.json"))
+        query_event_files = glob.glob(os.path.join(self.mysql_query_events_folder, "fuzz_*.json"))
+        
+        found_vuln = False
+        
+        # Tap hop tat ca cac file log can kiem tra
+        all_logs = []
+        for ef in error_files:
+            all_logs.append((ef, 'error'))
+        for qf in query_event_files:
+            all_logs.append((qf, 'query_event'))
+            
+        for filepath, log_type in all_logs:
+            filename = os.path.basename(filepath)
+            # Trich xuat trace_id tu ten file (vd: fuzz_12345.json -> fuzz_12345)
+            trace_id = filename.replace(".json", "")
+            
+            sink_errors = []
+            sink_query_events = []
+            
+            if log_type == 'error':
+                for line in fuzz_open(filepath):
+                    if line.strip():
+                        try:
+                            sink_errors.append(json.loads(line))
+                        except Exception:
+                            pass
+            else:
+                for line in fuzz_open(filepath):
+                    if line.strip():
+                        try:
+                            sink_query_events.append(json.loads(line))
+                        except Exception:
+                            pass
+                            
+            if not sink_errors and not sink_query_events:
+                continue
+                
+            # 2. Truy van database lay thong tin nguon (Source) tuong ung voi trace_id nay
+            source_url = "unknown"
+            source_method = "unknown"
+            payload_sample = "unknown"
+            
+            try:
+                import mysql.connector
+                conn = mysql.connector.connect(
+                    host="db",
+                    user="root",
+                    password="rootpassword",
+                    database="silent_testbed"
+                )
+                cursor = conn.cursor()
+                cursor.execute("SELECT url, method, payload_sample FROM fuzz_history WHERE fuzz_trace_id = %s", (trace_id,))
+                row = cursor.fetchone()
+                if row:
+                    source_url, source_method, payload_sample = row
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+                
+            # 3. Kiem tra xem co phai day la payload den tu phien fuzz hien tai khong (tranh trigger nham cua phien cu)
+            # Neu url la register hoac billing, thiet lap thong tin attribution cho Candidate
+            if source_url != "unknown":
+                found_vuln = True
+                
+                # Xác định loại lỗi
+                vuln_type = "Second-Order SQLi_Silent"
+                sink_query = ""
+                
+                if sink_errors:
+                    err = sink_errors[0]
+                    errstr = err.get('errstr', '').lower()
+                    if any(x in errstr for x in ['xpath', 'extractvalue', 'updatexml']):
+                        vuln_type = "Second-Order SQLi_ErrorBased_XPath"
+                    elif 'syntax error' in errstr or 'you have an error in your sql syntax' in errstr:
+                        vuln_type = "Second-Order SQLi_SyntaxError"
+                    else:
+                        vuln_type = "Second-Order SQLi_ErrorBased"
+                    sink_query = str(err.get('params', [err.get('errstr')])[0])
+                elif sink_query_events:
+                    qe = sink_query_events[0]
+                    query = qe.get('query', '').lower()
+                    if "sleep" in query or "benchmark" in query:
+                        vuln_type = "Second-Order SQLi_TimeBased"
+                    elif "sensor" in query:
+                        vuln_type = "Second-Order SQLi_SensorTable"
+                    elif "canary" in query:
+                        vuln_type = "Second-Order SQLi_HoneyColumn"
+                    sink_query = qe.get('query', '')
+                
+                # Lay tham so fuzz trong request cua Source
+                fuzz_param = "unknown"
+                for ptype, pdata in candidate.fuzz_params.items():
+                    if isinstance(pdata, dict) and pdata:
+                        fuzz_param = list(pdata.keys())[0]
+                        break
+                        
+                candidate.source_attribution = {
+                    'source_endpoint': source_url,
+                    'source_method': source_method,
+                    'source_parameter': fuzz_param,
+                    'source_payload_sent': payload_sample,
+                    'sink_endpoint': candidate.http_target,
+                    'sink_query': sink_query[:500],
+                    'data_flow': f"{source_url} ({source_method}) -> DB -> {candidate.http_target} ({candidate.http_method}) -> SQL Error: {vuln_type}"
+                }
+                
+                if vuln_type not in candidate.vulns:
+                    candidate.vulns.append(vuln_type)
+                    
+                try:
+                    os.unlink(filepath)
+                except Exception:
+                    pass
+        return found_vuln
+        
+#         self.vuln_checkers = [
+#             # WebFuzzXSSVulnCheck(),
+#             ParamBasedSQLiVulnCheck(mysql_errors_folder),
+#             SilentSQLiVulnCheck(mysql_query_events_folder),
+#             # ParamBasedCommandInjectionVulnCheck(shell_errors_folder),
+#             # ParamBasedUnserializeVulnCheck(unserialize_errors_folder),
+#             #ParamBasedPathTraversalVulnCheck(pathtraversal_errors_folder), # This one was used during the main analysis -> it discovered 'fu' in 'functions.php' (Wordpress), which is a false positive. 
+#             # WebPathBasedPathTraversalVulnCheck(pathtraversal_errors_folder), # This one ignores existing files, such as functions.php, and should thus report less false positives.
+#             # OpenRedirectVulnCheck(),
+#             # ParamBasedXXEVulnCheck(xxe_errors_folder)
+#         ]
+
 class ParamBasedVulnChecker(DefaultVulnChecker):
-    def __init__(self, mysql_errors_folder=None, mysql_query_events_folder=None, shell_errors_folder=None, unserialize_errors_folder=None, pathtraversal_errors_folder=None, xxe_errors_folder=None):
+    def __init__(self, mysql_errors_folder=None, mysql_query_events_folder=None,
+        db_write_events_folder=None,
+        shell_errors_folder=None, unserialize_errors_folder=None, 
+        pathtraversal_errors_folder=None, xxe_errors_folder=None):
         self.vuln_checkers = [
-            # WebFuzzXSSVulnCheck(),
             ParamBasedSQLiVulnCheck(mysql_errors_folder),
             SilentSQLiVulnCheck(mysql_query_events_folder),
-            # ParamBasedCommandInjectionVulnCheck(shell_errors_folder),
-            # ParamBasedUnserializeVulnCheck(unserialize_errors_folder),
-            #ParamBasedPathTraversalVulnCheck(pathtraversal_errors_folder), # This one was used during the main analysis -> it discovered 'fu' in 'functions.php' (Wordpress), which is a false positive. 
-            # WebPathBasedPathTraversalVulnCheck(pathtraversal_errors_folder), # This one ignores existing files, such as functions.php, and should thus report less false positives.
-            # OpenRedirectVulnCheck(),
-            # ParamBasedXXEVulnCheck(xxe_errors_folder)
+            SecondOrderSQLiVulnCheck(
+                db_write_events_folder=db_write_events_folder,
+                mysql_errors_folder=mysql_errors_folder,
+                mysql_query_events_folder=mysql_query_events_folder
+            ),
         ]

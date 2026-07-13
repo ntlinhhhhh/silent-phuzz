@@ -221,6 +221,21 @@ class HARGen():
                 "weight": int(max(self.args.fuzz_body, self.args.fuzz_all))
             }
 
+        # Second-Order SQLi custom fields (SilentPHUZZ)
+        if hasattr(self.args, 'init_db_sql') and self.args.init_db_sql:
+            config["init_db_sql"] = self.args.init_db_sql
+        if hasattr(self.args, 'second_order_tables') and self.args.second_order_tables:
+            config["second_order_tables"] = list(map(lambda x: x.strip(), self.args.second_order_tables.split(',')))
+        if hasattr(self.args, 'second_order_sink') and self.args.second_order_sink:
+            # Chỉ thêm second_order_sink nếu URL đích khác với URL của chính Sink (tránh tự gọi vòng lặp vô hạn)
+            req_path = urlparse(hreq.config_url).path.strip("/")
+            sink_path = urlparse(self.args.second_order_sink).path.strip("/")
+            if req_path != sink_path:
+                config["second_order_sink"] = {
+                    "target": self.args.second_order_sink,
+                    "method": getattr(self.args, 'second_order_sink_method', 'GET')
+                }
+
         pprint.pprint(config)
         return config
 
@@ -500,6 +515,14 @@ if __name__ == "__main__":
         '-op', '--out-prefix', help='Prefix to use for generated config files', default='hargen_')
     output_group.add_argument(
         '-od', '--out-dir', help='Output directory to write generated config files to.', default='/configs/', required=True)
+    
+    # Second-Order SQLi extensions
+    so_group = parser.add_argument_group('Second-Order SQLi options')
+    so_group.add_argument('--init-db-sql', help='Path to init_db.sql file to reset database.')
+    so_group.add_argument('--second-order-tables', help='Comma separated list of second order tables.')
+    so_group.add_argument('--second-order-sink', help='Target URL of second order sink endpoint.')
+    so_group.add_argument('--second-order-sink-method', help='Method of second order sink endpoint (GET/POST).', default='GET')
+
     args = parser.parse_args()
 
     hg = HARGen(args)

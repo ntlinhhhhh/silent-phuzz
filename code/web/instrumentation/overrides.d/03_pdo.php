@@ -370,6 +370,22 @@ uopz_set_return(
 
         $query = $this->queryString;
 
+        // 1. Kiem tra xem query co select tu bang duoc theo doi hay khong
+        if ($result !== false) {
+            $matched_table = null;
+            $query_lower = strtolower($query);
+            foreach ($GLOBALS['__fuzzer_tracked_tables'] as $table) {
+                $tbl_lower = strtolower($table);
+                if (strpos($query_lower, "from " . $tbl_lower) !== false || strpos($query_lower, "join " . $tbl_lower) !== false || strpos($query_lower, "from `" . $tbl_lower . "`") !== false) {
+                    $matched_table = $tbl_lower;
+                    break;
+                }
+            }
+            if ($matched_table) {
+                $GLOBALS['__fuzzer_result_to_table'][spl_object_id($this)] = $matched_table;
+            }
+        }
+
         $event = [
             'function' => 'PDOStatement::execute',
             'query' => $query,
@@ -395,11 +411,36 @@ uopz_set_return(
             ]);
             __fuzzer_file_put_contents(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", $error_json . "\n", FILE_APPEND);
             chmod(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", 0777);
+            
+            __fuzzer_correlate_and_log_error($query, $errno, $errstr);
+            
             if ($the_exception != null) {
                 throw $the_exception;
             }
         }
         return $result;
+    },
+    true
+);
+
+// Hook PDOStatement::fetch de capture du lieu dong vao buffer tracking
+uopz_set_return(
+    'PDOStatement',
+    'fetch',
+    function ($mode = null, $cursorOrientation = null, $cursorOffset = null) {
+        $row = $this->fetch($mode, $cursorOrientation, $cursorOffset);
+        if ($row && is_array($row)) {
+            $stmt_id = spl_object_id($this);
+            $table = $GLOBALS['__fuzzer_result_to_table'][$stmt_id] ?? null;
+            if ($table && isset($row['id'])) {
+                $db_conn = mysqli_connect('db', 'root', 'rootpassword', 'silent_testbed');
+                if ($db_conn) {
+                    __fuzzer_shadow_lookup($db_conn, $table, $row['id'], $row);
+                    mysqli_close($db_conn);
+                }
+            }
+        }
+        return $row;
     },
     true
 );

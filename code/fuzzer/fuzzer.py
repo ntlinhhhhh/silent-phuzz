@@ -27,6 +27,13 @@ from vulncheck import DefaultVulnChecker, ParamBasedVulnChecker
 from utils import fuzz_open
 from db_reset import MySQLResetAdapter
 
+def normalize_url(url):
+    try:
+        parsed = urlparse.urlparse(url)
+        return f"{parsed.netloc}{parsed.path}".lower().rstrip('/')
+    except Exception:
+        return url.lower().rstrip('/')
+
 #def print(*args, **kwargs):
 #    pass
 
@@ -77,10 +84,18 @@ class Fuzzer:
             "/shared-tmpfs/", "mysql-error-reports")
         self.mysql_query_events_folder = os.path.join(
             "/shared-tmpfs/", "mysql-query-events")
+        self.db_write_events_folder = os.path.join(
+            "/shared-tmpfs/", "db-write-events")
         if not os.path.exists(self.mysql_query_events_folder):
             os.makedirs(self.mysql_query_events_folder, exist_ok=True)
             try:
                 os.chmod(self.mysql_query_events_folder, 0o777)
+            except Exception:
+                pass
+        if not os.path.exists(self.db_write_events_folder):
+            os.makedirs(self.db_write_events_folder, exist_ok=True)
+            try:
+                os.chmod(self.db_write_events_folder, 0o777)
             except Exception:
                 pass
         self.shell_errors_folder = os.path.join(
@@ -109,7 +124,8 @@ class Fuzzer:
             unserialize_errors_folder=self.unserialize_errors_folder,
             pathtraversal_errors_folder=self.pathtraversal_errors_folder,
             xxe_errors_folder=self.xxe_errors_folder,
-            )
+            db_write_events_folder=self.db_write_events_folder
+        )
         self.db_reset_adapter = MySQLResetAdapter()
         ### 
         # END Define Fuzzing modules
@@ -133,6 +149,7 @@ class Fuzzer:
 
         pathmap = {
             'SQLi': self.mysql_errors_folder,
+            'Second-Order SQLi': self.mysql_errors_folder,
             'CommandInjection': self.shell_errors_folder,
             'Unserialize': self.unserialize_errors_folder,
             'PathTraversal': self.pathtraversal_errors_folder,
@@ -152,6 +169,25 @@ class Fuzzer:
                     query_event_file = os.path.join(self.mysql_query_events_folder, f"{candidate.coverage_id}.json")
                     if os.path.exists(query_event_file):
                         shutil.copyfile(query_event_file, os.path.join(self.output_dir, f"SQLi-events-{candidate.coverage_id}.json"))
+
+                # Copy Second-Order SQLi source/sink logs
+                if k == 'Second-Order SQLi':
+                    source_cid = getattr(candidate, 'source_coverage_id', None)
+                    if source_cid:
+                        write_info_file = os.path.join(self.db_write_events_folder, f"{source_cid}.json")
+                        if os.path.exists(write_info_file):
+                            shutil.copyfile(write_info_file, os.path.join(self.output_dir, f"SecondOrder-source-{source_cid}.json"))
+
+                    sink_cids = getattr(candidate, 'sink_coverage_ids', None)
+                    if sink_cids:
+                        for sink_url, sink_cid in sink_cids.items():
+                            error_info_file = os.path.join(self.mysql_errors_folder, f"{sink_cid}.json")
+                            if os.path.exists(error_info_file):
+                                shutil.copyfile(error_info_file, os.path.join(self.output_dir, f"SecondOrder-sink-error-{sink_cid}.json"))
+                            
+                            event_info_file = os.path.join(self.mysql_query_events_folder, f"{sink_cid}.json")
+                            if os.path.exists(event_info_file):
+                                shutil.copyfile(event_info_file, os.path.join(self.output_dir, f"SecondOrder-sink-event-{sink_cid}.json"))
 
         print("Vulnerable candidates saved!")
 
@@ -318,6 +354,20 @@ class Fuzzer:
         ):
             sys.exit(f"Login file {self.config['login']} does not exist.")
 
+        # Cấu hình db_reset_adapter động từ cấu hình
+        if hasattr(self, 'db_reset_adapter') and self.db_reset_adapter:
+            db_config = self.config.get('db_config')
+            if db_config:
+                self.db_reset_adapter.config.update(db_config)
+            
+            init_db_sql = self.config.get('init_db_sql')
+            if init_db_sql:
+                self.db_reset_adapter.config['init_db_sql'] = init_db_sql
+
+            second_order_tables = self.config.get('second_order_tables')
+            if second_order_tables:
+                self.db_reset_adapter.second_order_tables = second_order_tables
+
     def login(self):
         login_script = importlib.import_module(
             f"automated_logins.{self.config['login']}"
@@ -428,6 +478,39 @@ class Fuzzer:
     def calculate_energy(self, c):
         return self.scoring_formula.calculate_energy(c)
 
+    # def cleanup(self, candidate):
+    #     coverage_file_path = os.path.join(
+    #         self.coverage_files_folder, f"{candidate.coverage_id}.json"
+    #     )
+    #     if os.path.exists(coverage_file_path):
+    #         os.unlink(coverage_file_path)
+
+    #     mysql_error_path = os.path.join(
+    #         self.mysql_errors_folder, f"{candidate.coverage_id}.json"
+    #     )
+    #     if os.path.exists(mysql_error_path):
+    #         try:
+    #             os.unlink(mysql_error_path)
+    #         except Exception:
+    #             pass
+
+    #     mysql_event_path = os.path.join(
+    #         self.mysql_query_events_folder, f"{candidate.coverage_id}.json"
+    #     )
+    #     if os.path.exists(mysql_event_path):
+    #         try:
+    #             os.unlink(mysql_event_path)
+    #         except Exception:
+    #             pass
+
+    #     # Reset database states in target lab
+    #     if hasattr(self, 'db_reset_adapter') and self.db_reset_adapter:
+    #         try:
+    #             self.db_reset_adapter.reset_dml_state()
+    #             self.db_reset_adapter.reset_ddl_state()
+    #         except Exception:
+    #             pass
+
     def cleanup(self, candidate):
         coverage_file_path = os.path.join(
             self.coverage_files_folder, f"{candidate.coverage_id}.json"
@@ -435,25 +518,23 @@ class Fuzzer:
         if os.path.exists(coverage_file_path):
             os.unlink(coverage_file_path)
 
-        mysql_error_path = os.path.join(
-            self.mysql_errors_folder, f"{candidate.coverage_id}.json"
-        )
-        if os.path.exists(mysql_error_path):
-            try:
-                os.unlink(mysql_error_path)
-            except Exception:
-                pass
+        # Xóa các file logs của Source & Sink
+        cids_to_clean = [candidate.coverage_id]
+        if getattr(candidate, 'source_coverage_id', None):
+            cids_to_clean.append(candidate.source_coverage_id)
+        if getattr(candidate, 'sink_coverage_ids', None):
+            cids_to_clean.extend(candidate.sink_coverage_ids.values())
 
-        mysql_event_path = os.path.join(
-            self.mysql_query_events_folder, f"{candidate.coverage_id}.json"
-        )
-        if os.path.exists(mysql_event_path):
-            try:
-                os.unlink(mysql_event_path)
-            except Exception:
-                pass
+        for cid in cids_to_clean:
+            for folder in [self.mysql_errors_folder, self.mysql_query_events_folder, self.db_write_events_folder]:
+                path = os.path.join(folder, f"{cid}.json")
+                if os.path.exists(path):
+                    try:
+                        os.unlink(path)
+                    except Exception:
+                        pass
 
-        # Reset database states in target lab
+        # Reset database states
         if hasattr(self, 'db_reset_adapter') and self.db_reset_adapter:
             try:
                 self.db_reset_adapter.reset_dml_state()
@@ -536,7 +617,6 @@ class Fuzzer:
             raise Exception("Unknown HTTP method!")
 
         prepared = req.prepare()
-
         return prepared
 
     def run(self):
@@ -594,21 +674,11 @@ class Fuzzer:
     def ff_send_request(self, c):
         try:
             with requests.Session() as s:
-                #print(f'Testing candidate: {c.priority} {c.fuzz_params}')  
                 prepared_req = self.prepare_request(c)
                 response = s.send(prepared_req, timeout=self.request_timeout, allow_redirects=False)
                 c.response = response
-                
-                # Hỗ trợ tự động kích hoạt Endpoint B cho Second-Order SQLi (chuẩn 1a -> 1b)
-                query_params = {**c.fixed_params.get('query_params', {}), **c.fuzz_params.get('query_params', {})}
-                case_val = query_params.get('case')
-                if case_val == '1a':
-                    trigger_url = f"{c.http_target}?case=1b"
-                    # Chờ 0.1 giây để Endpoint A lưu trữ payload xong, sau đó kích hoạt Endpoint B
-                    time.sleep(0.1)
-                    s.get(trigger_url, headers={"X-FUZZER-COVID": c.coverage_id}, timeout=self.request_timeout)
         except Exception as e:
-            print(f"Exception encountered: {e}")
+            print(f"Exception encountered in send_request: {e}")
             c.response = None
 
     def ff_has_vulns(self, c):
@@ -884,7 +954,24 @@ if __name__ == "__main__":
     fuzzer = Fuzzer(fuzzer_id=os.environ['FUZZER_NODE_ID'])
     fuzzer.load_config(os.environ['FUZZER_CONFIG'])
     
-    # Chờ cho đến khi ứng dụng web và DB sẵn sàng kết nối hoàn toàn
+    # Chờ cho đến khi DB sẵn sàng kết nối qua TCP
+    db_config = fuzzer.config.get('db_config')
+    if db_config:
+        import socket
+        db_host = db_config.get('host', 'db')
+        db_port = int(db_config.get('port', 3306))
+        print(f"[*] Fuzzer {fuzzer.fuzzer_id}: Waiting for database {db_host}:{db_port} to accept TCP connections...")
+        for i in range(30):
+            try:
+                s = socket.create_connection((db_host, db_port), timeout=3)
+                s.close()
+                print("[+] Database is accepting TCP connections!")
+                break
+            except Exception:
+                pass
+            time.sleep(2)
+
+    # Chờ cho đến khi ứng dụng web sẵn sàng kết nối hoàn toàn
     target_url = fuzzer.config.get("target")
     if target_url:
         print(f"[*] Fuzzer {fuzzer.fuzzer_id}: Waiting for target {target_url} to be fully initialized...")

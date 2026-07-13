@@ -27,6 +27,13 @@ if (!getenv("FUZZER_SETUP") && isset($_SERVER['HTTP_X_FUZZER_COVID'])) {
 		@mkdir(__FUZZER__MYSQL_QUERY_EVENTS_PATH, 0777, true);
 	}
 
+    // Khoi tao cac bien toan cuc phuc vu truy vet
+    $GLOBALS['__fuzzer_tracked_tables'] = [];
+    $GLOBALS['__fuzzer_loaded_traces_val'] = [];
+    $GLOBALS['__fuzzer_result_to_table'] = [];
+    $GLOBALS['__fuzzer_db_initialized'] = false;
+    $GLOBALS['__fuzzer_history_logged'] = false;
+
 	function __fuzzer_file_put_contents($path, $data, $options = 0) {
 		if(getenv("FUZZER_COMPRESS")) {
 			file_put_contents($path, gzencode($data), $options); 
