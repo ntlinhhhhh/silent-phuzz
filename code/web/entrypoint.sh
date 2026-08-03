@@ -1,7 +1,7 @@
 #!/bin/bash
-mkdir -p /shared-tmpfs/{coverage-reports,exception-reports,error-reports,mysql-error-reports,shell-error-reports,unserialize-error-reports,pathtraversal-error-reports,xxe-error-reports}
+mkdir -p /shared-tmpfs/{coverage-reports,exception-reports,error-reports,mysql-error-reports,shell-error-reports,unserialize-error-reports,pathtraversal-error-reports,xxe-error-reports,mysql-query-events}
 rsync -av /applications/$APPLICATION_TYPE/ /var/www/html/
-chown -R www-data:www-data /var/www/ /shared-tmpfs/{coverage-reports,exception-reports,error-reports,mysql-error-reports,shell-error-reports,unserialize-error-reports,pathtraversal-error-reports,xxe-error-reports}
+chown -R www-data:www-data /var/www/ /shared-tmpfs/{coverage-reports,exception-reports,error-reports,mysql-error-reports,shell-error-reports,unserialize-error-reports,pathtraversal-error-reports,xxe-error-reports,mysql-query-events}
 
 if [ 0 -lt ${REQUIRES_DB} ]; then
 	while ! mysqladmin ping -h"db" --silent; do

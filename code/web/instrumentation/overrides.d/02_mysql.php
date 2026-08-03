@@ -38,6 +38,20 @@ uopz_set_return(
                 throw $the_exception;
             }
         }
+
+        $affected = ($result !== false) ? mysqli_affected_rows($mysql) : -1;
+            $json_event = json_encode(
+                [
+                    'function' => 'mysqli_query',
+                    'params' => [$query],
+                    'result' => ($result !== false),
+                    'affected_rows' => $affected,
+                    'errno' => ($result === false) ? (($the_exception) ? -1 : mysqli_errno($mysql)) : 0,
+                    'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : mysqli_error($mysql)) : '',
+                ]
+            );
+            __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
+            chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
         return $result;
     },
     true
@@ -78,6 +92,19 @@ uopz_set_return(
                 throw $the_exception;
             }
         }
+        $affected = ($result !== false) ? $this->affected_rows : -1;
+            $json_event = json_encode(
+                [
+                    'function' => 'mysqli::query',
+                    'params' => [$query],
+                    'result' => ($result !== false),
+                    'affected_rows' => $affected,
+                    'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errno) : 0,
+                    'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->error) : '',
+                ]
+            );
+            __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
+            chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
         return $result;
     },
     true

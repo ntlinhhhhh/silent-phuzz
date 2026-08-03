@@ -16,6 +16,7 @@ if (!getenv("FUZZER_SETUP") && isset($_SERVER['HTTP_X_FUZZER_COVID'])) {
 	define('__FUZZER__EXCEPTIONS_PATH', '/shared-tmpfs/exception-reports/');
 	define('__FUZZER__ERRORS_PATH', '/shared-tmpfs/error-reports/');
 	define('__FUZZER__MYSQL_ERRORS_PATH', '/shared-tmpfs/mysql-error-reports/');
+    define('__FUZZER__MYSQL_QUERY_EVENTS_PATH', '/shared-tmpfs/mysql-query-events/');
 	define('__FUZZER__SHELL_ERRORS_PATH', '/shared-tmpfs/shell-error-reports/');
 	define('__FUZZER__UNSERIALIZE_ERRORS_PATH', '/shared-tmpfs/unserialize-error-reports/');
 	define('__FUZZER__PATHTRAVERSAL_ERRORS_PATH', '/shared-tmpfs/pathtraversal-error-reports/');

@@ -35,6 +35,19 @@ uopz_set_return(
                 throw $the_exception;
             }
         }
+        $affected = ($result !== false) ? $result->rowCount() : -1;
+            $json_event = json_encode(
+                [
+                    'function' => 'PDO::query',
+                    'params' => [$query],
+                    'result' => ($result !== false),
+                    'affected_rows' => $affected,
+                    'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errorCode()) : 0,
+                    'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->errorInfo()) : '',
+                ]
+            );
+            __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
+            chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
         return $result;
     },
     true
@@ -73,6 +86,19 @@ uopz_set_return(
                 throw $the_exception;
             }
         }
+        $affected = ($result !== false) ? $result->rowCount() : -1;
+            $json_event = json_encode(
+                [
+                    'function' => 'PDO::query',
+                    'params' => [$query],
+                    'result' => ($result !== false),
+                    'affected_rows' => $affected,
+                    'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errorCode()) : 0,
+                    'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->errorInfo()) : '',
+                ]
+            );
+            __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
+            chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
         return $result;
     },
     true
@@ -110,6 +136,19 @@ uopz_set_return(
                 throw $e;
             }
         }
+        $affected = ($result !== false) ? $result->rowCount() : -1;
+            $json_event = json_encode(
+                [
+                    'function' => 'PDO::query',
+                    'params' => [$query],
+                    'result' => ($result !== false),
+                    'affected_rows' => $affected,
+                    'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errorCode()) : 0,
+                    'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->errorInfo()) : '',
+                ]
+            );
+            __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
+            chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
         return $result;
     },
     true
@@ -149,6 +188,19 @@ uopz_set_return(
                 throw $e;
             }
         }
+        $affected = ($result !== false) ? $result->rowCount() : -1;
+            $json_event = json_encode(
+                [
+                    'function' => 'PDO::query',
+                    'params' => [$query],
+                    'result' => ($result !== false),
+                    'affected_rows' => $affected,
+                    'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errorCode()) : 0,
+                    'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->errorInfo()) : '',
+                ]
+            );
+            __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
+            chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
         return $result;
     },
     true
@@ -187,6 +239,19 @@ uopz_set_return(
                 throw $e;
             }
         }
+        $affected = ($result !== false) ? $result : -1;
+            $json_event = json_encode(
+                [
+                    'function' => 'PDO::exec',
+                    'params' => [$statement], // Chú ý: param là $statement, không phải $query
+                    'result' => ($result !== false),
+                    'affected_rows' => $affected,
+                    'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errorCode()) : 0,
+                    'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->errorInfo()) : '',
+                ]
+            );
+            __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
+            chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
         return $result;
     },
     true
