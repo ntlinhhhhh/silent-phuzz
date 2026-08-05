@@ -4,12 +4,22 @@ import os
 import time
 from pathlib import Path
 from uuid import uuid4
-from utils import fuzz_open
+from utils import TraceIdGenerator, fuzz_open
+
+_trace_generator = None
 
 
 class Candidate:
     def __init__(self,  parent=None, score=0, priority=0, http_target="", http_method="GET", fixed_params={}, fuzz_params={}, fuzz_weights={}, fuzzer_id=-1, is_initial_candidate=False, mutated_param_type=None, mutated_param_name=None):
-        self.coverage_id = str(int(time.time())) + "-" + str(uuid4())
+        global _trace_generator
+        if _trace_generator is None:
+            # Lấy fuzzer_id từ tham số hoặc biến môi trường FUZZER_NODE_ID
+            node_id = fuzzer_id if fuzzer_id >= 0 else int(os.environ.get('FUZZER_NODE_ID', 1))
+            _trace_generator = TraceIdGenerator(node_id=node_id)
+
+        # replace uuid4 with trace_id Base62 
+        self.coverage_id = _trace_generator.generate()
+        self.trace_id = self.coverage_id
         self.parent = parent
         self.score = score
         self.priority = priority

@@ -2,6 +2,11 @@ import os
 import random
 import json
 import gzip
+import time
+import threading
+import warnings
+import sys
+
 
 def fuzz_open(path, mode="r"):
     if os.environ["FUZZER_COMPRESS"] == "1":
@@ -166,3 +171,88 @@ def extract_input_vectors_from_har(file_path, domain=None):
         return filter_requests_by_domain(requests, domain)
     else:
         return requests
+
+class TraceIdGenerator:
+    CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    BASE = 62
+    EPOCH = 1767225600          # 01/01/2026 00:00:00 UTC
+    MAX_DELTA = BASE ** 5       # 62^5 = 916,132,832 seconds (~29 years)
+    MAX_COUNTER = BASE ** 4     # 62^4 = 14,776,336 requests/sec/node
+
+    def __init__(self, node_id: int):
+        if not (0 <= node_id < self.BASE):
+            warning_msg = (
+                f"[WARNING] TraceIdGenerator: Invalid node_id '{node_id}'. "
+                f"Must be between 0 and {self.BASE - 1}. Defaulting to node_id=0."
+            )
+            print(warning_msg, file=sys.stderr)
+            warnings.warn(warning_msg, RuntimeWarning)
+            node_id = 0
+
+        self.node_id = node_id
+        self.counter = 0
+        self.last_time = 0
+        self._lock = threading.Lock()   # Thread-safe lock for counter increment
+
+    @classmethod
+    def encode(cls, num: int) -> str:
+        if num == 0:
+            return cls.CHARS[0]
+        arr = []
+        while num:
+            num, rem = divmod(num, cls.BASE)
+            arr.append(cls.CHARS[rem])
+        return ''.join(reversed(arr))
+
+    @classmethod
+    def decode(cls, s: str) -> int:
+        num = 0
+        for ch in s:
+            num = num * cls.BASE + cls.CHARS.index(ch)
+        return num
+
+    def generate(self) -> str:
+        with self._lock:
+            now = int(time.time())
+            delta = now - self.EPOCH
+
+            # 1. Check Epoch Overflow (> 29 Years)
+            if delta >= self.MAX_DELTA:
+                err_msg = (
+                    f"[CRITICAL WARNING] TraceIdGenerator: Epoch delta ({delta}s) has exceeded "
+                    f"the maximum limit of 62^5 ({self.MAX_DELTA}s). "
+                    f"Trace IDs are no longer guaranteed to fit within 5 characters for part_time! "
+                    f"Please update EPOCH or expand part_time length."
+                )
+                print(err_msg, file=sys.stderr)
+                warnings.warn(err_msg, RuntimeWarning)
+            elif delta < 0:
+                warn_msg = (
+                    f"[WARNING] TraceIdGenerator: System clock is set before EPOCH ({self.EPOCH}). "
+                    f"Negative delta encountered!"
+                )
+                print(warn_msg, file=sys.stderr)
+                delta = 0
+
+            # 2. Reset / Increment Counter
+            if now == self.last_time:
+                self.counter += 1
+                # Check Counter Collision/Overflow (Over 14.77 Million requests/second)
+                if self.counter >= self.MAX_COUNTER:
+                    collision_warn = (
+                        f"[WARNING] TraceIdGenerator: Counter overflow detected on Node {self.node_id}! "
+                        f"Counter reached {self.counter} (>= 62^4) within the same second ({now}). "
+                        f"Counter is wrapping around to 0. ID collision risk elevated for this second!"
+                    )
+                    print(collision_warn, file=sys.stderr)
+                    warnings.warn(collision_warn, RuntimeWarning)
+                    self.counter = 0
+            else:
+                self.last_time = now
+                self.counter = 0
+
+            part_node = self.encode(self.node_id)[-1]
+            part_time = self.encode(delta).zfill(5)
+            part_counter = self.encode(self.counter).zfill(4)
+
+            return part_node + part_time + part_counter
