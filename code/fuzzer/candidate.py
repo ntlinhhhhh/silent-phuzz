@@ -19,7 +19,7 @@ class Candidate:
 
         # replace uuid4 with trace_id Base62 
         self.coverage_id = _trace_generator.generate()
-        self.trace_id = self.coverage_id
+        # self.trace_id = self.coverage_id
         self.parent = parent
         self.score = score
         self.priority = priority
@@ -45,6 +45,8 @@ class Candidate:
         }
         self.response = None
         self.vulns = []
+        # add sqli mutation meta to candidate
+        self.sqli_mutation_meta = []
         self.errors = None
         self.exceptions = None
         self.new_paths = {}
@@ -65,8 +67,24 @@ class Candidate:
         self.hash = None
 
     def __dict__(self):
+        serialized_meta = []
+        for m in self.sqli_mutation_meta:
+            if hasattr(m, 'group_id'):
+                serialized_meta.append({
+                    'payload': getattr(m, 'payload', ''),
+                    'group_id': getattr(m, 'group_id', 0),
+                    'oracle': m.oracle.value if hasattr(m.oracle, 'value') else str(m.oracle),
+                    'boolean_branch': getattr(m, 'boolean_branch', None),
+                    'created_temp_table': getattr(m, 'created_temp_table', None),
+                    'dropped_temp_table': getattr(m, 'dropped_temp_table', None),
+                    'requires_multi_statement': getattr(m, 'requires_multi_statement', True),
+                })
+            else:
+                serialized_meta.append(str(m))
+        
         return {
             'coverage_id': self.coverage_id,
+            # 'trace_id': self.trace_id,
             'priority': self.priority,
             'http_target': self.http_target,
             'http_method': self.http_method,
@@ -89,6 +107,7 @@ class Candidate:
             'paths': self.paths,
             'new_paths': list(self.new_paths),
             'vulns': self.vulns,
+            'sqli_mutation_meta': serialized_meta,
             'score': self.score,
             'is_interesting': self.is_interesting,
             'fuzzer_id': self.fuzzer_id,

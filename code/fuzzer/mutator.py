@@ -1,4 +1,7 @@
+from enum import Enum
 import random
+from typing import Optional
+from attr import dataclass
 import utils
 
 #######
@@ -206,6 +209,26 @@ class SuperRandomMutator(ParamMutator):
 
         return mutated_string
 
+#######
+#
+# PayloadResult and Oracle
+#
+########
+
+class Oracle(Enum):
+    TRAP_TABLE = "trap_table"          # Kiểm tra tác động lên bảng bẫy (__phuzz_insert/update/delete)
+    RESPONSE_DIFF = "response_diff"    # So sánh vi phân HTML giữa 2 request TRUE / FALSE
+    TIMING = "timing"                  # So sánh độ trễ thời gian (SLEEP)
+
+@dataclass
+class PayloadResult:
+    payload: str
+    group_id: int
+    oracle: Oracle
+    boolean_branch: Optional[bool] = None
+    created_temp_table: Optional[str] = None
+    dropped_temp_table: Optional[str] = None
+    requires_multi_statement: bool = True
 
 #######
 #
