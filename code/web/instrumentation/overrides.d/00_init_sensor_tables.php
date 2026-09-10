@@ -81,26 +81,27 @@ function __phuzz_ensure_sensor_tables($db_link_or_pdo) {
         $sql = "
             CREATE TABLE IF NOT EXISTS __phuzz_insert (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                marker VARCHAR(100) NOT NULL
+                marker VARCHAR(100) DEFAULT 'marker'
             ) ENGINE=InnoDB;
 
             CREATE TABLE IF NOT EXISTS __phuzz_update (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                marker VARCHAR(100) NOT NULL
+                marker VARCHAR(100) DEFAULT 'marker'
             ) ENGINE=InnoDB;
-            INSERT IGNORE INTO __phuzz_update (id, marker) VALUES (1, 'marker');
+            INSERT INTO __phuzz_update (id, marker) VALUES (1, 'marker');
 
             CREATE TABLE IF NOT EXISTS __phuzz_delete (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                marker VARCHAR(100) NOT NULL
+                marker VARCHAR(100) DEFAULT 'marker'
             ) ENGINE=InnoDB;
-            INSERT IGNORE INTO __phuzz_delete (id, marker) VALUES (1, 'marker');
+            INSERT INTO __phuzz_delete (id, marker) VALUES (1, 'marker');
 
-            CREATE TABLE IF NOT EXISTS __phuzz_history (
-                pz_trace_id VARCHAR(100) NOT NULL PRIMARY KEY,
-                url TEXT,
-                method VARCHAR(10),
-                request_data TEXT
+            CREATE TABLE IF NOT EXISTS __phuzz_history (                                                                                                                           
+                pz_trace_id VARCHAR(100) NOT NULL PRIMARY KEY,                                                                                                                
+                url TEXT NOT NULL,                                                                                                                                              
+                method VARCHAR(10) NOT NULL,           
+                request_data TEXT,                                                                                                                         
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP                                                                                                                  
             ) ENGINE=InnoDB;
         ";
 
