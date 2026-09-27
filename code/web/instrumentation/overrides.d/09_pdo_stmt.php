@@ -1,48 +1,93 @@
 <?php
 // overrides.d/09_pdo_stmt.php
 
+uopz_set_return('PDOStatement', 'bindValue', function ($parameter, $value, $type = PDO::PARAM_STR) {
+    if ($GLOBALS['__PHUZZ_SUPPRESS_HOOKS']) {
+        return $this->bindValue($parameter, $value, $type);
+    }
+    $result = $this->bindValue($parameter, $value, $type);
+    if ($result) {
+        __phuzz_remember_stmt_bound_value($this, $parameter, $value);
+    }
+    return $result;
+}, true);
+
+uopz_set_return('PDOStatement', 'bindParam', function (
+    $parameter,
+    &$variable,
+    $type = PDO::PARAM_STR,
+    $max_length = 0,
+    $driver_options = null
+) {
+    if ($GLOBALS['__PHUZZ_SUPPRESS_HOOKS']) {
+        return $this->bindParam($parameter, $variable, $type, $max_length, $driver_options);
+    }
+    $result = $this->bindParam($parameter, $variable, $type, $max_length, $driver_options);
+    if ($result) {
+        __phuzz_remember_stmt_bound_reference($this, $parameter, $variable);
+    }
+    return $result;
+}, true);
+
 uopz_set_return('PDOStatement', 'execute', function ($params = null) {
     if ($GLOBALS['__PHUZZ_SUPPRESS_HOOKS']) {
         return $params !== null ? $this->execute($params) : $this->execute();
     }
 
+    $query = $this->queryString ?: __phuzz_resolve_sql_for_stmt($this);
+    $bind_params = $params !== null
+        ? __phuzz_normalize_bind_params($params)
+        : __phuzz_resolve_bind_params_for_stmt($this);
+    $event_seq = __phuzz_next_event_seq();
+    $markers = __phuzz_build_markers(null, $query, $bind_params);
+    $started_at = __phuzz_timer_start();
     try {
-        $result = $this->execute($params);
+        $result = $params !== null ? $this->execute($params) : $this->execute();
         $the_exception = null;
     } catch (Throwable $e) {
         $result = false;
         $the_exception = $e;
     }
-
-    $query = $this->queryString ?? (__phuzz_resolve_sql_for_stmt($this) ?? 'PDO_STATEMENT');
+    $duration_ms = __phuzz_duration_ms($started_at);
+    $timestamp = __phuzz_utc_timestamp();
 
     if ($result === false) {
         $errno = ($the_exception) ? -1 : $this->errorCode();
         $errstr = ($the_exception) ? $the_exception->getMessage() : $this->errorInfo();
-        $json = json_encode([
-            'function' => 'PDOStatement::execute',
-            'params' => [$query],
-            'errno' => $errno,
-            'errstr' => $errstr,
-        ]);
-        __fuzzer_file_put_contents(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", $json . "\n", FILE_APPEND);
-        chmod(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", 0777);
-        if ($the_exception != null) {
-            throw $the_exception;
-        }
+    } else {
+        $errno = 0;
+        $errstr = '';
     }
 
     $affected = ($result !== false) ? $this->rowCount() : -1;
-    $json_event = json_encode([
-        'function' => 'PDOStatement::execute',
-        'params' => [$query],
-        'result' => ($result !== false),
-        'affected_rows' => $affected,
-        'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errorCode()) : 0,
-        'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->errorInfo()) : '',
-    ]);
-    __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
-    chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
+    __phuzz_write_query_event(
+        'PDOStatement::execute',
+        $event_seq,
+        null,
+        $query,
+        $bind_params,
+        $result !== false,
+        $errno,
+        $errstr,
+        $affected,
+        $duration_ms,
+        $timestamp,
+        $markers
+    );
+
+    if ($result === false) {
+        __phuzz_write_mysql_error(
+            'PDOStatement::execute',
+            [$query ?? 'PDO_STATEMENT'],
+            $errno,
+            $errstr,
+            $event_seq,
+            $markers
+        );
+        if ($the_exception !== null) {
+            throw $the_exception;
+        }
+    }
 
     return $result;
 }, true);

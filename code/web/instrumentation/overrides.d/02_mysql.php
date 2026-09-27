@@ -4,12 +4,13 @@
 uopz_set_return(
     'mysqli_query',
     function ($mysql, $query, $result_mode = MYSQLI_STORE_RESULT) {
-        mysqli_report(MYSQLI_REPORT_ALL ^ MYSQLI_REPORT_STRICT);
         if ($GLOBALS['__PHUZZ_SUPPRESS_HOOKS']) {
             return mysqli_query($mysql, $query, $result_mode);
         }
-        __phuzz_ensure_sensor_tables($mysql);
 
+        $event_seq = __phuzz_next_event_seq();
+        $markers = __phuzz_build_markers($query, null, null);
+        $started_at = __phuzz_timer_start();
         try {
             $result = mysqli_query($mysql, $query, $result_mode);
             $the_exception = null;
@@ -17,34 +18,46 @@ uopz_set_return(
             $result = false;
             $the_exception = $e;
         }
+        $duration_ms = __phuzz_duration_ms($started_at);
+        $timestamp = __phuzz_utc_timestamp();
 
         if ($result === false) {
             $errno = ($the_exception) ? -1 : mysqli_errno($mysql);
             $errstr = ($the_exception) ? $the_exception->getMessage() : mysqli_error($mysql);
-            $json = json_encode([
-                'function' => 'mysqli_query',
-                'params' => [$query],
-                'errno' => $errno,
-                'errstr' => $errstr,
-            ]);
-            __fuzzer_file_put_contents(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", $json . "\n", FILE_APPEND);
-            chmod(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", 0777);
-            if ($the_exception != null) {
-                throw $the_exception;
-            }
+        } else {
+            $errno = 0;
+            $errstr = '';
         }
 
         $affected = ($result !== false) ? mysqli_affected_rows($mysql) : -1;
-        $json_event = json_encode([
-            'function' => 'mysqli_query',
-            'params' => [$query],
-            'result' => ($result !== false),
-            'affected_rows' => $affected,
-            'errno' => ($result === false) ? (($the_exception) ? -1 : mysqli_errno($mysql)) : 0,
-            'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : mysqli_error($mysql)) : '',
-        ]);
-        __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
-        chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
+        __phuzz_write_query_event(
+            'mysqli_query',
+            $event_seq,
+            $query,
+            null,
+            null,
+            $result !== false,
+            $errno,
+            $errstr,
+            $affected,
+            $duration_ms,
+            $timestamp,
+            $markers
+        );
+
+        if ($result === false) {
+            __phuzz_write_mysql_error(
+                'mysqli_query',
+                [$query],
+                $errno,
+                $errstr,
+                $event_seq,
+                $markers
+            );
+            if ($the_exception !== null) {
+                throw $the_exception;
+            }
+        }
 
         return $result;
     },
@@ -55,12 +68,13 @@ uopz_set_return(
     'mysqli',
     'query',
     function ($query, $result_mode = MYSQLI_STORE_RESULT) {
-        mysqli_report(MYSQLI_REPORT_ALL ^ MYSQLI_REPORT_STRICT);
         if ($GLOBALS['__PHUZZ_SUPPRESS_HOOKS']) {
             return $this->query($query, $result_mode);
         }
-        __phuzz_ensure_sensor_tables($this);
 
+        $event_seq = __phuzz_next_event_seq();
+        $markers = __phuzz_build_markers($query, null, null);
+        $started_at = __phuzz_timer_start();
         try {
             $result = $this->query($query, $result_mode);
             $the_exception = null;
@@ -68,34 +82,46 @@ uopz_set_return(
             $result = false;
             $the_exception = $e;
         }
+        $duration_ms = __phuzz_duration_ms($started_at);
+        $timestamp = __phuzz_utc_timestamp();
 
         if ($result === false) {
             $errno = ($the_exception) ? -1 : $this->errno;
             $errstr = ($the_exception) ? $the_exception->getMessage() : $this->error;
-            $json = json_encode([
-                'function' => 'mysqli::query',
-                'params' => [$query],
-                'errno' => $errno,
-                'errstr' => $errstr,
-            ]);
-            __fuzzer_file_put_contents(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", $json . "\n", FILE_APPEND);
-            chmod(__FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . ".json", 0777);
-            if ($the_exception != null) {
-                throw $the_exception;
-            }
+        } else {
+            $errno = 0;
+            $errstr = '';
         }
 
         $affected = ($result !== false) ? $this->affected_rows : -1;
-        $json_event = json_encode([
-            'function' => 'mysqli::query',
-            'params' => [$query],
-            'result' => ($result !== false),
-            'affected_rows' => $affected,
-            'errno' => ($result === false) ? (($the_exception) ? -1 : $this->errno) : 0,
-            'errstr' => ($result === false) ? (($the_exception) ? $the_exception->getMessage() : $this->error) : '',
-        ]);
-        __fuzzer_file_put_contents(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", $json_event . "\n", FILE_APPEND);
-        chmod(__FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . ".json", 0777);
+        __phuzz_write_query_event(
+            'mysqli::query',
+            $event_seq,
+            $query,
+            null,
+            null,
+            $result !== false,
+            $errno,
+            $errstr,
+            $affected,
+            $duration_ms,
+            $timestamp,
+            $markers
+        );
+
+        if ($result === false) {
+            __phuzz_write_mysql_error(
+                'mysqli::query',
+                [$query],
+                $errno,
+                $errstr,
+                $event_seq,
+                $markers
+            );
+            if ($the_exception !== null) {
+                throw $the_exception;
+            }
+        }
 
         return $result;
     },
