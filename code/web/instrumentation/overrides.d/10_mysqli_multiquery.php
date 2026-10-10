@@ -9,7 +9,7 @@ function __phuzz_execute_mysqli_multi_query(
     callable $execute
 ) {
     $event_seq = __phuzz_next_event_seq();
-    $markers = __phuzz_build_markers($sql, null, null);
+    $markers = __phuzz_build_fuzz_markers($sql, null, null);
     $mysql_connection_id = $connection->thread_id;
     $started_at = __phuzz_timer_start();
 

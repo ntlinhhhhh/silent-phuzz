@@ -23,7 +23,7 @@ uopz_set_return('PDO', 'query', function (...$args) {
 
     $query = $args[0] ?? null;
     $event_seq = __phuzz_next_event_seq();
-    $markers = __phuzz_build_markers($query, null, null);
+    $markers = __phuzz_build_fuzz_markers($query, null, null);
     $started_at = __phuzz_timer_start();
     try {
         $result = $this->query(...$args);
@@ -86,7 +86,7 @@ uopz_set_return('PDO', 'exec', function ($statement) {
     }
 
     $event_seq = __phuzz_next_event_seq();
-    $markers = __phuzz_build_markers($statement, null, null);
+    $markers = __phuzz_build_fuzz_markers($statement, null, null);
     $started_at = __phuzz_timer_start();
     try {
         $result = $this->exec($statement);

@@ -9,7 +9,7 @@ uopz_set_return(
         }
 
         $event_seq = __phuzz_next_event_seq();
-        $markers = __phuzz_build_markers($query, null, null);
+        $markers = __phuzz_build_fuzz_markers($query, null, null);
         $started_at = __phuzz_timer_start();
         try {
             $result = mysqli_query($mysql, $query, $result_mode);
@@ -73,7 +73,7 @@ uopz_set_return(
         }
 
         $event_seq = __phuzz_next_event_seq();
-        $markers = __phuzz_build_markers($query, null, null);
+        $markers = __phuzz_build_fuzz_markers($query, null, null);
         $started_at = __phuzz_timer_start();
         try {
             $result = $this->query($query, $result_mode);

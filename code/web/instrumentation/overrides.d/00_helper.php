@@ -58,21 +58,15 @@ function __phuzz_json_safe($value) {
     return (string) $value;
 }
 
-function __phuzz_marker_prefix(): string {
-    $prefix = getenv('PHUZZ_MARKER_PREFIX') ?: 'uet';
+function __phuzz_extract_fuzz_markers($value) {
 
-    if (!preg_match('/^[A-Za-z][A-Za-z0-9]{0,31}$/', $prefix)) {
-        return 'uet';
+    if (__phuzz_phase() !== 'fuzzing') {
+        return [];
     }
 
-    return $prefix;
-}
-
-function __phuzz_extract_markers($value) {
     $markers = [];
-    $prefix = preg_quote(__phuzz_marker_prefix(), '/');
-    $pattern = '/(?<![0-9A-Za-z_])' . $prefix
-        . '_[0-9A-Za-z_]+(?![0-9A-Za-z_])/';
+    $pattern = '/(?<![0-9A-Za-z_])pz_[0-9A-Za-z_]+(?![0-9A-Za-z_])/';
+
     $visit = function ($item) use (&$visit, &$markers, $pattern) {
         if (is_array($item)) {
             foreach ($item as $nested) {
@@ -100,12 +94,20 @@ function __phuzz_extract_markers($value) {
     return $markers;
 }
 
-function __phuzz_build_markers($sql_text, $sql_template, $bind_params) {
+function __phuzz_build_fuzz_markers($sql_text, $sql_template, $bind_params) {
     return [
-        'sql_text' => __phuzz_extract_markers($sql_text),
-        'sql_template' => __phuzz_extract_markers($sql_template),
-        'bind_params' => __phuzz_extract_markers($bind_params),
+        'sql_text' => __phuzz_extract_fuzz_markers($sql_text),
+        'sql_template' => __phuzz_extract_fuzz_markers($sql_template),
+        'bind_params' => __phuzz_extract_fuzz_markers($bind_params),
     ];
+}
+
+function __phuzz_with_fuzz_markers(array $record, array $markers) {
+    if (__phuzz_phase() !== 'fuzzing') {
+        record['markers'] = markers;
+    }
+    
+    return $record;
 }
 
 function __phuzz_error_message($value) {
@@ -158,7 +160,7 @@ function __phuzz_write_query_event(
 ) {
     __phuzz_write_json_line(
         __FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . '.json',
-        [
+        __phuzz_with_fuzz_markers([
             'current_coverage_id' => __FUZZER__COVID,
             'event_seq' => $event_seq,
             'phase' => __phuzz_phase(),
@@ -173,8 +175,7 @@ function __phuzz_write_query_event(
             'affected_rows' => $affected_rows,
             'duration_ms' => $duration_ms,
             'timestamp' => $timestamp,
-            'markers' => $markers,
-        ]
+        ], $markers)
     );
 }
 
@@ -194,7 +195,7 @@ function __phuzz_write_multi_query_event(
     // A separate Performance Schema collector enriches this immutable record.
     __phuzz_write_json_line(
         __FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . '.json',
-        [
+        __phuzz_with_fuzz_markers([
             'current_coverage_id' => __FUZZER__COVID,
             'event_seq' => $event_seq,
             'phase' => __phuzz_phase(),
@@ -203,7 +204,6 @@ function __phuzz_write_multi_query_event(
             'sql_text' => $sql_text,
             'sql_template' => null,
             'bind_params' => null,
-            'markers' => $markers,
             'connection' => [
                 'mysql_connection_id' => $mysql_connection_id,
                 'performance_schema_thread_id' => null,
@@ -224,7 +224,7 @@ function __phuzz_write_multi_query_event(
                 'collected_at' => null,
             ],
             'statements' => [],
-        ]
+        ], $markers)
     );
 }
 
@@ -239,7 +239,7 @@ function __phuzz_write_mysql_error(
     // Keep the four legacy fields unchanged; append correlation metadata only.
     __phuzz_write_json_line(
         __FUZZER__MYSQL_ERRORS_PATH . __FUZZER__COVID . '.json',
-        [
+        __phuzz_with_fuzz_markers([
             'function' => $function,
             'params' => $params,
             'errno' => $errno,
@@ -248,8 +248,7 @@ function __phuzz_write_mysql_error(
             'event_seq' => $event_seq,
             'phase' => __phuzz_phase(),
             'endpoint' => __phuzz_endpoint_context(),
-            'markers' => $markers,
-        ]
+        ], $markers)
     );
 }
 
@@ -384,7 +383,10 @@ function __phuzz_resolve_sql_for_stmt($stmt): ?string {
 }
 
 function __phuzz_phase(): string {
-    $phase = getenv('PHUZZ_PHASE') ?: 'legacy';
+    $request_phase = $_SERVER['HTTP_X_PHUZZ_PHASE'] ?? null;
+    $phase = is_string($request_phase) && $request_phase !== ''
+        ? $request_phase
+        : (getenv('PHUZZ_PHASE') ?: 'legacy');
 
     if (!in_array($phase, ['profiling', 'fuzzing', 'legacy'], true)) {
         return 'legacy';

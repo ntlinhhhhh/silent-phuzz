@@ -39,7 +39,7 @@ uopz_set_return('PDOStatement', 'execute', function ($params = null) {
         ? __phuzz_normalize_bind_params($params)
         : __phuzz_resolve_bind_params_for_stmt($this);
     $event_seq = __phuzz_next_event_seq();
-    $markers = __phuzz_build_markers(null, $query, $bind_params);
+    $markers = __phuzz_build_fuzz_markers(null, $query, $bind_params);
     $started_at = __phuzz_timer_start();
     try {
         $result = $params !== null ? $this->execute($params) : $this->execute();
