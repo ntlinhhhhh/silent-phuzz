@@ -59,14 +59,12 @@ function __phuzz_json_safe($value) {
 }
 
 function __phuzz_extract_fuzz_markers($value) {
-
     if (__phuzz_phase() !== 'fuzzing') {
         return [];
     }
 
     $markers = [];
     $pattern = '/(?<![0-9A-Za-z_])pz_[0-9A-Za-z_]+(?![0-9A-Za-z_])/';
-
     $visit = function ($item) use (&$visit, &$markers, $pattern) {
         if (is_array($item)) {
             foreach ($item as $nested) {
@@ -102,11 +100,10 @@ function __phuzz_build_fuzz_markers($sql_text, $sql_template, $bind_params) {
     ];
 }
 
-function __phuzz_with_fuzz_markers(array $record, array $markers) {
-    if (__phuzz_phase() !== 'fuzzing') {
-        record['markers'] = markers;
+function __phuzz_with_fuzz_markers(array $record, array $markers): array {
+    if (__phuzz_phase() === 'fuzzing') {
+        $record['markers'] = $markers;
     }
-    
     return $record;
 }
 
@@ -189,10 +186,11 @@ function __phuzz_write_multi_query_event(
     $errstr,
     $duration_ms,
     $timestamp,
-    array $markers
+    array $markers,
+    array $statements = []
 ) {
-    // The PHP hook observes only the API call and its first-result status.
-    // A separate Performance Schema collector enriches this immutable record.
+    // The PHP hook observes the API call and its statements from Performance Schema.
+    $stmt_count = count($statements);
     __phuzz_write_json_line(
         __FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . '.json',
         __phuzz_with_fuzz_markers([
@@ -216,14 +214,14 @@ function __phuzz_write_multi_query_event(
                 'timestamp' => $timestamp,
             ],
             'collection' => [
-                'status' => 'pending',
+                'status' => $stmt_count > 0 ? 'collected' : 'pending',
                 'source' => 'performance_schema',
-                'correlation' => 'pending',
-                'expected_statement_count' => null,
-                'observed_statement_count' => 0,
-                'collected_at' => null,
+                'correlation' => $stmt_count > 0 ? 'correlated' : 'pending',
+                'expected_statement_count' => $stmt_count > 0 ? $stmt_count : null,
+                'observed_statement_count' => $stmt_count,
+                'collected_at' => $stmt_count > 0 ? $timestamp : null,
             ],
-            'statements' => [],
+            'statements' => $statements,
         ], $markers)
     );
 }
