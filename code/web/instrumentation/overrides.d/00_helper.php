@@ -176,56 +176,6 @@ function __phuzz_write_query_event(
     );
 }
 
-function __phuzz_write_multi_query_event(
-    $function,
-    $event_seq,
-    $sql_text,
-    $mysql_connection_id,
-    $success,
-    $errno,
-    $errstr,
-    $duration_ms,
-    $timestamp,
-    array $markers,
-    array $statements = []
-) {
-    // The PHP hook observes the API call and its statements from Performance Schema.
-    $stmt_count = count($statements);
-    __phuzz_write_json_line(
-        __FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . '.json',
-        __phuzz_with_fuzz_markers([
-            'current_coverage_id' => __FUZZER__COVID,
-            'event_seq' => $event_seq,
-            'phase' => __phuzz_phase(),
-            'endpoint' => __phuzz_endpoint_context(),
-            'function' => $function,
-            'sql_text' => $sql_text,
-            'sql_template' => null,
-            'bind_params' => null,
-            'connection' => [
-                'mysql_connection_id' => $mysql_connection_id,
-                'performance_schema_thread_id' => null,
-            ],
-            'call' => [
-                'success' => (bool) $success,
-                'errno' => $errno,
-                'errstr' => __phuzz_error_message($errstr),
-                'duration_ms' => $duration_ms,
-                'timestamp' => $timestamp,
-            ],
-            'collection' => [
-                'status' => $stmt_count > 0 ? 'collected' : 'pending',
-                'source' => 'performance_schema',
-                'correlation' => $stmt_count > 0 ? 'correlated' : 'pending',
-                'expected_statement_count' => $stmt_count > 0 ? $stmt_count : null,
-                'observed_statement_count' => $stmt_count,
-                'collected_at' => $stmt_count > 0 ? $timestamp : null,
-            ],
-            'statements' => $statements,
-        ], $markers)
-    );
-}
-
 function __phuzz_write_mysql_error(
     $function,
     array $params,
