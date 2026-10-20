@@ -2,3 +2,8 @@ requests
 beautifulsoup4
 esprima
 bleach
+PyMySQL==1.1.1
+attrs==25.3.0
+cryptography==42.0.8
+sqlglot==30.18.0   
+apted==1.0.3

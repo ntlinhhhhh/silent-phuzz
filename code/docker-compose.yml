@@ -54,7 +54,7 @@ services:
       - 8181:8181
 
   db:
-    image: mysql
+    image: mysql:8.0
     command: mysqld
     environment:
       MYSQL_DATABASE: db
@@ -122,6 +122,10 @@ services:
       PYTHONUNBUFFERED: 1
       FUZZER_NODE_ID: 1
       FUZZER_CONFIG: dvwa/sqli_low
+      SCHEMA_DB_HOST: db
+      SCHEMA_DB_PORT: "3306"
+      SCHEMA_DB_USER: "${SCHEMA_DB_USER:-user}"
+      SCHEMA_DB_PASSWORD: "${SCHEMA_DB_PASSWORD:-password}"
       FUZZER_CLEANUP: 1
       FUZZER_COMPRESS: 1
     volumes:
