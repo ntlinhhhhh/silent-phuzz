@@ -7,6 +7,7 @@ __pycache__
 */unserialize-error-reports/*.json
 */eval-error-reports/*.json
 */output/*
+*artifacts/*
 !*/output/.gitkeep
 cookies.json
 params.json
