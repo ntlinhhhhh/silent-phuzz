@@ -1,7 +1,7 @@
 """Safe, target-scoped persistence for schema and SQL-context artifacts.
 
 This module owns filesystem concerns only: JSON decoding, atomic replacement,
-and the one cross-process lock shared by a target's artifacts.  It does not
+and the cross-process lock shared by a target's artifacts. It does not
 interpret a schema or parse SQL.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any, Callable, Iterable, Iterator, Mapping
 
 try:  # Linux fuzzer containers use flock; keep a small host-dev fallback.
     import fcntl
-except ImportError:  # pragma: no cover - exercised only when developing on Windows
+except ImportError:  # Windows development fallback
     fcntl = None
     import msvcrt
 
@@ -128,7 +128,7 @@ def exclusive_process_lock(lock_path: str | Path, timeout_seconds: float) -> Ite
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout_seconds
     with lock_path.open("a+b") as handle:
-        if fcntl is None:  # pragma: no cover - Windows development fallback
+        if fcntl is None:
             handle.seek(0, os.SEEK_END)
             if handle.tell() == 0:
                 handle.write(b"\0")
@@ -137,7 +137,7 @@ def exclusive_process_lock(lock_path: str | Path, timeout_seconds: float) -> Ite
             try:
                 if fcntl is not None:
                     fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                else:  # pragma: no cover - Windows development fallback
+                else:
                     handle.seek(0)
                     msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
                 break
@@ -150,7 +150,7 @@ def exclusive_process_lock(lock_path: str | Path, timeout_seconds: float) -> Ite
         finally:
             if fcntl is not None:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            else:  # pragma: no cover - Windows development fallback
+            else:
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
@@ -203,18 +203,18 @@ def _merge_inputs(existing: Any, incoming: Any) -> list[dict[str, Any]]:
 
 
 def _statement_structural_key(statement: Mapping[str, Any]) -> str:
-    """Identity of one statement under the current universal-AST contract."""
+    """Identity of one statement under the SQL Template contract."""
     return _canonical_json(
         {
             "statement_index": statement.get("statement_index"),
             "statement_type": statement.get("statement_type"),
-            "ast_structure": statement.get("ast_structure"),
+            "template": statement.get("template"),
         }
     )
 
 
 def _execution_structural_key(execution: Mapping[str, Any]) -> tuple[str, ...]:
-    """Return the ordered universal-AST key for one execution."""
+    """Return the ordered template-based structural key for one execution."""
     statements = execution.get("statements")
     if not isinstance(statements, list):
         return ()
@@ -226,6 +226,7 @@ def _execution_structural_key(execution: Mapping[str, Any]) -> tuple[str, ...]:
 
 
 def _merge_context_inputs(existing: dict[str, Any], incoming: Mapping[str, Any]) -> None:
+    """Merge current-contract input evidence onto matching executions."""
     existing_executions = existing.get("request_executions")
     incoming_executions = incoming.get("request_executions")
     if not isinstance(existing_executions, list) or not isinstance(incoming_executions, list):
@@ -301,27 +302,13 @@ def _merge_context_inputs(existing: dict[str, Any], incoming: Mapping[str, Any])
             if "repeat_count" in statement:
                 target["repeat_count"] = statement["repeat_count"]
 
-            incoming_ast = statement.get("ast_structure")
-            if isinstance(incoming_ast, Mapping):
-                target["ast_structure"] = dict(incoming_ast)
-
 
 def _execution_statement_shape(execution: Mapping[str, Any]) -> tuple[str, ...]:
-    """Return the ordered canonical statement shape of one execution.
-
-    ``execution_index`` is a profiler-candidate number, not part of SQL
-    structure.  The ordered canonical statement keys are the stable shape used
-    to collapse old artifacts that recorded the same execution more than once.
-    """
     return _execution_structural_key(execution)
 
 
 def _deduplicate_context_executions(contexts: Any) -> bool:
-    """Collapse repeated executions inside an already identified context.
-
-    Keep one representative per ordered universal-AST sequence, merge its
-    inputs, and preserve the first representative's execution index.
-    """
+    """Collapse repeated executions inside an already identified context."""
     if not isinstance(contexts, list):
         return False
     changed = False
@@ -392,7 +379,7 @@ class SQLContextStoreResult:
 
 
 class SQLContextStore:
-    """Persist de-duplicated AST contexts for one config under the target lock."""
+    """Persist de-duplicated template-based contexts for one config under the target lock."""
 
     def __init__(self, directory: str | Path, lock_path: str | Path, *, lock_timeout_seconds: float = 30.0):
         if lock_timeout_seconds <= 0:
@@ -453,66 +440,19 @@ class SQLContextStore:
         if isinstance(paren_depth, bool) or not isinstance(paren_depth, int) or paren_depth < 0:
             raise SQLContextStoreError("SQL context input paren_depth must be a non-negative integer")
 
-    @staticmethod
-    def _validate_ast_structure(value: Any) -> None:
-        """Validate the generic ``ast_to_universal_json`` representation."""
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return
-        if isinstance(value, list):
-            for item in value:
-                SQLContextStore._validate_ast_structure(item)
-            return
-        if not isinstance(value, Mapping):
-            raise SQLContextStoreError("ast_structure must contain JSON values only")
-
-        if {"enum_module", "enum_qualname", "name"}.issubset(value):
-            if set(value) != {"enum_module", "enum_qualname", "name"}:
-                raise SQLContextStoreError("ast_structure enum payload has unsupported fields")
-            if not all(isinstance(value.get(key), str) and value[key] for key in value):
-                raise SQLContextStoreError("ast_structure enum payload must contain strings")
-            if not str(value["enum_module"]).startswith("sqlglot."):
-                raise SQLContextStoreError("ast_structure enum payload must be a SQLGlot enum")
-            return
-
-        node_type = value.get("type")
-        if not isinstance(node_type, str):
-            for item in value.values():
-                SQLContextStore._validate_ast_structure(item)
-            return
-        if not node_type:
-            raise SQLContextStoreError("ast_structure node type must be a non-empty string")
-        if node_type in {"Literal", "Boolean", "Null"}:
-            if set(value) != {"type", "value_type"} or not isinstance(value.get("value_type"), str):
-                raise SQLContextStoreError("generalized literal must contain only type and value_type")
-            expected_type = {
-                "Literal": {"string", "integer", "number"},
-                "Boolean": {"boolean"},
-                "Null": {"null"},
-            }[node_type]
-            if value["value_type"] not in expected_type:
-                raise SQLContextStoreError("generalized literal has an invalid value_type")
-            return
-        if node_type == "DType":
-            if set(value) != {"type", "value"}:
-                raise SQLContextStoreError("DType must contain only type and value")
-            SQLContextStore._validate_ast_structure(value["value"])
-            return
-        if set(value) != {"type", "args"} or not isinstance(value.get("args"), Mapping):
-            raise SQLContextStoreError("universal AST expression must contain only type and args")
-        SQLContextStore._validate_ast_structure(value["args"])
-
     @classmethod
     def _validate_context(cls, context: Mapping[str, Any]) -> None:
-        if set(context) != {"sql_context_id", "endpoint", "request_executions"}:
-            raise SQLContextStoreError("SQL context must contain request_executions")
+        keys = set(context)
+        if not (keys == {"sql_context_id", "phuzz_config", "request_executions"} or keys == {"sql_context_id", "endpoint", "request_executions"}):
+            raise SQLContextStoreError("SQL context must contain sql_context_id, phuzz_config, request_executions")
         context_id = context.get("sql_context_id")
         if not isinstance(context_id, str) or not context_id:
             raise SQLContextStoreError("SQL context contains an invalid sql_context_id")
-        endpoint = context.get("endpoint")
-        if not isinstance(endpoint, Mapping) or set(endpoint) != {"method", "path"}:
-            raise SQLContextStoreError("SQL context has an invalid endpoint")
-        if not isinstance(endpoint.get("method"), str) or not isinstance(endpoint.get("path"), str):
-            raise SQLContextStoreError("SQL context endpoint fields must be strings")
+        cfg = context.get("phuzz_config") or context.get("endpoint")
+        if not isinstance(cfg, Mapping) or not ({"method", "path"}.issubset(set(cfg))):
+            raise SQLContextStoreError("SQL context phuzz_config has invalid structure")
+        if not isinstance(cfg.get("method"), str) or not isinstance(cfg.get("path"), str):
+            raise SQLContextStoreError("SQL context phuzz_config fields must be strings")
         executions = context.get("request_executions")
         if not isinstance(executions, list) or not executions:
             raise SQLContextStoreError("SQL context request_executions must be a non-empty list")
@@ -544,7 +484,6 @@ class SQLContextStore:
                     "sql_raw",
                     "template",
                     "inputs",
-                    "ast_structure",
                 }
                 if set(statement) != expected_statement_keys:
                     raise SQLContextStoreError("SQL context statement has unsupported fields")
@@ -560,12 +499,6 @@ class SQLContextStore:
                     raise SQLContextStoreError("SQL context sql_raw must be a string")
                 if not isinstance(statement.get("template"), str):
                     raise SQLContextStoreError("SQL context template must be a string")
-                if not isinstance(statement.get("ast_structure"), Mapping):
-                    raise SQLContextStoreError("SQL context ast_structure must be a JSON object")
-                if statement["statement_type"] != "PARSE_FAILURE":
-                    cls._validate_ast_structure(statement["ast_structure"])
-                elif statement["ast_structure"] != {}:
-                    raise SQLContextStoreError("parse-failure statement must have an empty ast_structure")
                 inputs = statement.get("inputs")
                 if not isinstance(inputs, list):
                     raise SQLContextStoreError("SQL context inputs must be a list")
@@ -599,37 +532,6 @@ class SQLContextStore:
                 raise SQLContextStoreError(f"SQL context contains duplicate sql_context_id {context_id}")
             ids.add(context_id)
 
-    @staticmethod
-    def _is_legacy_context_contract(contexts: Any) -> bool:
-        """Recognize derived artifacts from before the universal-AST contract."""
-        if not isinstance(contexts, list):
-            return False
-        for context in contexts:
-            if not isinstance(context, Mapping):
-                continue
-            if "calls" in context or "function" in context:
-                return True
-            executions = context.get("request_executions")
-            if not isinstance(executions, list):
-                continue
-            for execution in executions:
-                statements = execution.get("statements") if isinstance(execution, Mapping) else None
-                if not isinstance(statements, list):
-                    continue
-                for statement in statements:
-                    if not isinstance(statement, Mapping):
-                        continue
-                    fields = set(statement)
-                    if {
-                        "input_slots",
-                        "semantic_ast",
-                        "ast_compare",
-                    }.intersection(fields):
-                        return True
-                    if "sql_raw" not in fields and "inputs" not in fields:
-                        return True
-        return False
-
     @classmethod
     def _prepare_document(
         cls,
@@ -637,13 +539,6 @@ class SQLContextStore:
         config_reference: str,
         schema_fingerprint: str,
     ) -> tuple[dict[str, Any], bool]:
-        """Return the current compact contract and whether it must be rewritten.
-
-        Earlier contexts use a different AST serializer and input contract.
-        They cannot be converted correctly without reparsing the original SQL,
-        so they are regenerated.  SQL contexts are derived artifacts; the
-        baseline schema is untouched.
-        """
         expected_config = normalize_config_reference(config_reference)
         if document.get("config") != expected_config:
             raise SQLContextStoreError("SQL context file belongs to a different config")
@@ -651,13 +546,6 @@ class SQLContextStore:
             raise SQLContextStoreError(
                 "SQL context was built from a different schema; create a new target artifact directory"
             )
-        if "executions" in document and "contexts" not in document:
-            return cls._new_document(config_reference, schema_fingerprint), True
-        if "executions" in document and "contexts" in document:
-            raise SQLContextStoreError("SQL context mixes obsolete executions with compact contexts")
-        legacy_compact_contexts = document.get("contexts")
-        if "format_version" in document or cls._is_legacy_context_contract(legacy_compact_contexts):
-            return cls._new_document(config_reference, schema_fingerprint), True
         prepared = dict(document)
         cls._validate_document(prepared, config_reference, schema_fingerprint)
         return prepared, False
@@ -672,8 +560,6 @@ class SQLContextStore:
     @staticmethod
     def _save(path: Path, document: Mapping[str, Any]) -> None:
         try:
-            # SQL-context AST dictionaries are intentionally emitted in the
-            # grammar order produced by ast_structure.py.
             atomic_write_json(
                 path,
                 document,
@@ -738,8 +624,6 @@ class SQLContextStore:
         with exclusive_process_lock(self.lock_path, self.lock_timeout_seconds):
             raw_document = self._load(path) if path.exists() else self._new_document(config_reference, schema_fingerprint)
             document, _rewritten = self._prepare_document(raw_document, config_reference, schema_fingerprint)
-            # Repair artifacts produced by the old execution-index merge rule
-            # before applying this run's new profiling evidence.
             _deduplicate_context_executions(document["contexts"])
             by_id = {context["sql_context_id"]: context for context in document["contexts"]}
             added = 0

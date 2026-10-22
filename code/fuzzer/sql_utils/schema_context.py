@@ -115,8 +115,8 @@ class ArtifactPaths:
         return self.target_root / "schema_context.json"
 
     @property
-    def snapshot_file(seft) -> Path:
-        return seft.target_root / "snapshot.sql"
+    def snapshot_file(self) -> Path:
+        return self.target_root / "snapshot.sql"
     @property
     def lock(self) -> Path:
         return self.target_root / "schema-context.lock"
