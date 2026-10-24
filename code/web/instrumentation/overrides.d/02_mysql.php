@@ -24,28 +24,6 @@ uopz_set_return(
         if ($result === false) {
             $errno = ($the_exception) ? -1 : mysqli_errno($mysql);
             $errstr = ($the_exception) ? $the_exception->getMessage() : mysqli_error($mysql);
-        } else {
-            $errno = 0;
-            $errstr = '';
-        }
-
-        $affected = ($result !== false) ? mysqli_affected_rows($mysql) : -1;
-        __phuzz_write_query_event(
-            'mysqli_query',
-            $event_seq,
-            $query,
-            null,
-            null,
-            $result !== false,
-            $errno,
-            $errstr,
-            $affected,
-            $duration_ms,
-            $timestamp,
-            $markers
-        );
-
-        if ($result === false) {
             __phuzz_write_mysql_error(
                 'mysqli_query',
                 [$query],
@@ -57,8 +35,20 @@ uopz_set_return(
             if ($the_exception !== null) {
                 throw $the_exception;
             }
+        } else {
+            $affected = mysqli_affected_rows($mysql);
+            __phuzz_write_query_success(
+                'mysqli_query',
+                $event_seq,
+                $query,
+                null,
+                null,
+                $affected,
+                $duration_ms,
+                $timestamp,
+                $markers
+            );
         }
-
         return $result;
     },
     true
@@ -88,28 +78,6 @@ uopz_set_return(
         if ($result === false) {
             $errno = ($the_exception) ? -1 : $this->errno;
             $errstr = ($the_exception) ? $the_exception->getMessage() : $this->error;
-        } else {
-            $errno = 0;
-            $errstr = '';
-        }
-
-        $affected = ($result !== false) ? $this->affected_rows : -1;
-        __phuzz_write_query_event(
-            'mysqli::query',
-            $event_seq,
-            $query,
-            null,
-            null,
-            $result !== false,
-            $errno,
-            $errstr,
-            $affected,
-            $duration_ms,
-            $timestamp,
-            $markers
-        );
-
-        if ($result === false) {
             __phuzz_write_mysql_error(
                 'mysqli::query',
                 [$query],
@@ -121,6 +89,19 @@ uopz_set_return(
             if ($the_exception !== null) {
                 throw $the_exception;
             }
+        } else {
+            $affected = $this->affected_rows;
+            __phuzz_write_query_success(
+                'mysqli::query',
+                $event_seq,
+                $query,
+                null,
+                null,
+                $affected,
+                $duration_ms,
+                $timestamp,
+                $markers
+            );
         }
 
         return $result;

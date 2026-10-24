@@ -16,7 +16,7 @@ if (!getenv("FUZZER_SETUP") && isset($_SERVER['HTTP_X_FUZZER_COVID'])) {
 	define('__FUZZER__EXCEPTIONS_PATH', '/shared-tmpfs/exception-reports/');
 	define('__FUZZER__ERRORS_PATH', '/shared-tmpfs/error-reports/');
 	define('__FUZZER__MYSQL_ERRORS_PATH', '/shared-tmpfs/mysql-error-reports/');
-    define('__FUZZER__MYSQL_QUERY_EVENTS_PATH', '/shared-tmpfs/mysql-query-events/');
+    define('__FUZZER__MYSQL_QUERY_SUCCESS_PATH', '/shared-tmpfs/mysql-query-success/');
 	define('__FUZZER__SHELL_ERRORS_PATH', '/shared-tmpfs/shell-error-reports/');
 	define('__FUZZER__UNSERIALIZE_ERRORS_PATH', '/shared-tmpfs/unserialize-error-reports/');
 	define('__FUZZER__PATHTRAVERSAL_ERRORS_PATH', '/shared-tmpfs/pathtraversal-error-reports/');
@@ -25,7 +25,7 @@ if (!getenv("FUZZER_SETUP") && isset($_SERVER['HTTP_X_FUZZER_COVID'])) {
 
 	function __fuzzer_file_put_contents($path, $data, $options = 0) {
 		if(getenv("FUZZER_COMPRESS")) {
-			file_put_contents($path, gzencode($data), $options); 
+			file_put_contents($path, gzencode($data), $options);
 		} else {
 			file_put_contents($path, $data, $options);
 		}
@@ -35,7 +35,7 @@ if (!getenv("FUZZER_SETUP") && isset($_SERVER['HTTP_X_FUZZER_COVID'])) {
 	{
 		if (!defined('__FUZZER__SHUTDOWN_FUNCTION_TRIGGERED') && $shutdown) {
 			define('__FUZZER__SHUTDOWN_FUNCTION_TRIGGERED', true);
-			
+
 			if(ini_get("pcov.enabled") == 1) {
 				## PCOV
 				$coverage = \pcov\collect();
@@ -47,7 +47,7 @@ if (!getenv("FUZZER_SETUP") && isset($_SERVER['HTTP_X_FUZZER_COVID'])) {
 				$coverage = xdebug_get_code_coverage();
 				if($shutdown) {
 					xdebug_stop_code_coverage();
-				}	
+				}
 			}
 			$coverage["__time__"] = microtime(true) - __FUZZER__START_TIME__;
 
@@ -65,7 +65,6 @@ if (!getenv("FUZZER_SETUP") && isset($_SERVER['HTTP_X_FUZZER_COVID'])) {
 		xdebug_set_filter(XDEBUG_FILTER_CODE_COVERAGE, XDEBUG_PATH_INCLUDE, [getenv("FUZZER_COVERAGE_PATH")]);
 
 	}
-
 
 	// inject our function overrides
 	foreach(scandir(__DIR__ . "/overrides.d/") as $file) {

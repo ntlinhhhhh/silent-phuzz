@@ -38,32 +38,6 @@ uopz_set_return('PDO', 'query', function (...$args) {
     if ($result === false) {
         $errno = $the_exception ? -1 : $this->errorCode();
         $errstr = $the_exception ? $the_exception->getMessage() : $this->errorInfo();
-    } else {
-        $errno = 0;
-        $errstr = '';
-    }
-
-    if ($result instanceof PDOStatement) {
-        __phuzz_remember_stmt($result, $this, $query);
-    }
-
-    $affected = ($result !== false) ? $result->rowCount() : -1;
-    __phuzz_write_query_event(
-        'PDO::query',
-        $event_seq,
-        $query,
-        null,
-        null,
-        $result !== false,
-        $errno,
-        $errstr,
-        $affected,
-        $duration_ms,
-        $timestamp,
-        $markers
-    );
-
-    if ($result === false) {
         __phuzz_write_mysql_error(
             'PDO::query',
             [$query],
@@ -75,6 +49,22 @@ uopz_set_return('PDO', 'query', function (...$args) {
         if ($the_exception !== null) {
             throw $the_exception;
         }
+    } else {
+        if ($result instanceof PDOStatement) {
+            __phuzz_remember_stmt($result, $this, $query);
+        }
+        $affected = $result->rowCount();
+        __phuzz_write_query_success(
+            'PDO::query',
+            $event_seq,
+            $query,
+            null,
+            null,
+            $affected,
+            $duration_ms,
+            $timestamp,
+            $markers
+        );
     }
 
     return $result;
@@ -101,28 +91,6 @@ uopz_set_return('PDO', 'exec', function ($statement) {
     if ($result === false) {
         $errno = $the_exception ? -1 : $this->errorCode();
         $errstr = $the_exception ? $the_exception->getMessage() : $this->errorInfo();
-    } else {
-        $errno = 0;
-        $errstr = '';
-    }
-
-    $affected = ($result !== false) ? $result : -1;
-    __phuzz_write_query_event(
-        'PDO::exec',
-        $event_seq,
-        $statement,
-        null,
-        null,
-        $result !== false,
-        $errno,
-        $errstr,
-        $affected,
-        $duration_ms,
-        $timestamp,
-        $markers
-    );
-
-    if ($result === false) {
         __phuzz_write_mysql_error(
             'PDO::exec',
             [$statement],
@@ -134,6 +102,19 @@ uopz_set_return('PDO', 'exec', function ($statement) {
         if ($the_exception !== null) {
             throw $the_exception;
         }
+    } else {
+        $affected = $result;
+        __phuzz_write_query_success(
+            'PDO::exec',
+            $event_seq,
+            $statement,
+            null,
+            null,
+            $affected,
+            $duration_ms,
+            $timestamp,
+            $markers
+        );
     }
 
     return $result;

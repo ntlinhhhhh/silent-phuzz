@@ -76,28 +76,6 @@ function __phuzz_execute_mysqli_stmt($statement, $params, $function, callable $e
     if ($result === false) {
         $errno = ($the_exception) ? -1 : $statement->errno;
         $errstr = ($the_exception) ? $the_exception->getMessage() : $statement->error;
-    } else {
-        $errno = 0;
-        $errstr = '';
-    }
-
-    $affected = ($result !== false) ? $statement->affected_rows : -1;
-    __phuzz_write_query_event(
-        $function,
-        $event_seq,
-        null,
-        $query,
-        $bind_params,
-        $result !== false,
-        $errno,
-        $errstr,
-        $affected,
-        $duration_ms,
-        $timestamp,
-        $markers
-    );
-
-    if ($result === false) {
         __phuzz_write_mysql_error(
             $function,
             [$query ?? 'PREPARED_STMT'],
@@ -109,6 +87,19 @@ function __phuzz_execute_mysqli_stmt($statement, $params, $function, callable $e
         if ($the_exception !== null) {
             throw $the_exception;
         }
+    } else {
+        $affected = $statement->affected_rows;
+        __phuzz_write_query_success(
+            $function,
+            $event_seq,
+            null,
+            $query,
+            $bind_params,
+            $affected,
+            $duration_ms,
+            $timestamp,
+            $markers
+        );
     }
 
     return $result;

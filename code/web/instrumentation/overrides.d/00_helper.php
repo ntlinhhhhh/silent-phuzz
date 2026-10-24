@@ -141,22 +141,19 @@ function __phuzz_write_json_line($path, array $record) {
     @chmod($path, 0777);
 }
 
-function __phuzz_write_query_event(
+function __phuzz_write_query_success(
     $function,
     $event_seq,
     $sql_text,
     $sql_template,
     $bind_params,
-    $success,
-    $errno,
-    $errstr,
     $affected_rows,
     $duration_ms,
     $timestamp,
     array $markers
 ) {
     __phuzz_write_json_line(
-        __FUZZER__MYSQL_QUERY_EVENTS_PATH . __FUZZER__COVID . '.json',
+        __FUZZER__MYSQL_QUERY_SUCCESS_PATH . __FUZZER__COVID . '.json',
         __phuzz_with_fuzz_markers([
             'current_coverage_id' => __FUZZER__COVID,
             'event_seq' => $event_seq,
@@ -166,9 +163,7 @@ function __phuzz_write_query_event(
             'sql_text' => $sql_text,
             'sql_template' => $sql_template,
             'bind_params' => $bind_params === null ? null : __phuzz_json_safe($bind_params),
-            'success' => (bool) $success,
-            'errno' => $errno,
-            'errstr' => __phuzz_error_message($errstr),
+            'success' => true,
             'affected_rows' => $affected_rows,
             'duration_ms' => $duration_ms,
             'timestamp' => $timestamp,

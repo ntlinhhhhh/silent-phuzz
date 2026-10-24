@@ -54,28 +54,6 @@ uopz_set_return('PDOStatement', 'execute', function ($params = null) {
     if ($result === false) {
         $errno = ($the_exception) ? -1 : $this->errorCode();
         $errstr = ($the_exception) ? $the_exception->getMessage() : $this->errorInfo();
-    } else {
-        $errno = 0;
-        $errstr = '';
-    }
-
-    $affected = ($result !== false) ? $this->rowCount() : -1;
-    __phuzz_write_query_event(
-        'PDOStatement::execute',
-        $event_seq,
-        null,
-        $query,
-        $bind_params,
-        $result !== false,
-        $errno,
-        $errstr,
-        $affected,
-        $duration_ms,
-        $timestamp,
-        $markers
-    );
-
-    if ($result === false) {
         __phuzz_write_mysql_error(
             'PDOStatement::execute',
             [$query ?? 'PDO_STATEMENT'],
@@ -87,6 +65,19 @@ uopz_set_return('PDOStatement', 'execute', function ($params = null) {
         if ($the_exception !== null) {
             throw $the_exception;
         }
+    } else {
+        $affected = $this->rowCount();
+        __phuzz_write_query_success(
+            'PDOStatement::execute',
+            $event_seq,
+            null,
+            $query,
+            $bind_params,
+            $affected,
+            $duration_ms,
+            $timestamp,
+            $markers
+        );
     }
 
     return $result;
