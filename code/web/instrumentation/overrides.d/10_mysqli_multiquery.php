@@ -26,29 +26,6 @@ function __phuzz_execute_mysqli_multi_query(
     if ($failed) {
         $errno = $the_exception ? -1 : $connection->errno;
         $errstr = $the_exception ? $the_exception->getMessage() : $connection->error;
-    } else {
-        $errno = 0;
-        $errstr = '';
-    }
-
-    $affected = $failed ? -1 : $connection->affected_rows;
-
-    __phuzz_write_query_event(
-        $function,
-        $event_seq,
-        $sql,
-        null,
-        null,
-        !$failed,
-        $errno,
-        $errstr,
-        $affected,
-        $duration_ms,
-        $timestamp,
-        $markers
-    );
-
-    if ($failed) {
         __phuzz_write_mysql_error(
             $function,
             [$sql],
@@ -60,6 +37,19 @@ function __phuzz_execute_mysqli_multi_query(
         if ($the_exception !== null) {
             throw $the_exception;
         }
+    } else {
+        $affected = $connection->affected_rows;
+        __phuzz_write_query_success(
+            $function,
+            $event_seq,
+            $sql,
+            null,
+            null,
+            $affected,
+            $duration_ms,
+            $timestamp,
+            $markers
+        );
     }
 
     return $result;
